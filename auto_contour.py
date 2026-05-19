@@ -63,7 +63,7 @@ PRESETS: Dict[str, List[str]] = {
         "stomach",           # Желудок
         "aorta",             # Аорта
         "inferior_vena_cava",# Нижняя полая вена
-        "bladder",           # Мочевой пузырь
+        "urinary_bladder",   # Мочевой пузырь
         "heart"              # Сердце
     ],
     "thoracic_oar": [
@@ -75,7 +75,7 @@ PRESETS: Dict[str, List[str]] = {
         "esophagus"          # Пищевод
     ],
     "pelvis_oar": [
-        "bladder",           # Мочевой пузырь
+        "urinary_bladder",   # Мочевой пузырь
         "prostate",          # Предстательная железа (если есть)
         "rectum",            # Прямая кишка
         "colon",             # Кишечник
@@ -97,7 +97,7 @@ ORGAN_COLORS: Dict[str, List[int]] = {
     "stomach": [255, 152, 0],         # Оранжевый
     "aorta": [244, 67, 54],           # Красный
     "inferior_vena_cava": [63, 81, 181], # Темно-синий
-    "bladder": [255, 235, 59],        # Желтый
+    "urinary_bladder": [255, 235, 59],  # Желтый
     "heart": [233, 30, 99],           # Розовый
     "lung_left": [0, 150, 136],        # Бирюзовый
     "lung_right": [0, 188, 212],       # Светло-бирюзовый
