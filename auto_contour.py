@@ -358,6 +358,60 @@ def run_pipeline(
                 logger.warning(f"Пресет '{preset_name}' не найден. Будут экспортированы все найденные OAR.")
                 target_organs = None
         
+        # Динамически получаем список поддерживаемых органов в TotalSegmentator
+        supported_organs = set()
+        try:
+            from totalsegmentator.map_to_binary import class_map
+            # Обычно дефолтная модель - это 'total', если её нет - берем первую доступную
+            if "total" in class_map:
+                supported_organs = set(class_map["total"].values())
+            elif "total_v1" in class_map:
+                supported_organs = set(class_map["total_v1"].values())
+            else:
+                # Объединяем все доступные в class_map
+                for subset in class_map.values():
+                    supported_organs.update(subset.values())
+            logger.info(f"Динамически загружено классов TotalSegmentator: {len(supported_organs)}")
+        except Exception as e:
+            logger.warning(f"Не удалось динамически получить список классов TotalSegmentator: {e}. Будет использован базовый набор.")
+            # Резервный набор классов
+            supported_organs = {
+                "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "pancreas",
+                "adrenal_gland_right", "adrenal_gland_left", "esophagus", "trachea", "thyroid_gland",
+                "small_bowel", "duodenum", "colon", "urinary_bladder", "prostate", "sacrum", "heart",
+                "aorta", "superior_vena_cava", "inferior_vena_cava", "portal_vein_and_splenic_vein",
+                "iliac_artery_left", "iliac_artery_right", "clavicula_left", "clavicula_right",
+                "femur_left", "femur_right", "hip_left", "hip_right", "spinal_cord", "brain", "skull", "sternum"
+            }
+
+        # Карта виртуальных органов, которые мы можем собрать из долей/частей
+        VIRTUAL_ORGANS_MAP = {
+            "lung_left": ["lung_upper_lobe_left", "lung_lower_lobe_left"],
+            "lung_right": ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"]
+        }
+
+        # Адаптируем список целевых органов под поддерживаемые классы TotalSegmentator
+        totalseg_rois = []
+        if target_organs:
+            for organ in target_organs:
+                if organ in supported_organs:
+                    totalseg_rois.append(organ)
+                elif organ in VIRTUAL_ORGANS_MAP:
+                    # Если виртуальный орган (например, lung_left), проверяем, поддерживаются ли его части
+                    parts = VIRTUAL_ORGANS_MAP[organ]
+                    supported_parts = [p for p in parts if p in supported_organs]
+                    if supported_parts:
+                        totalseg_rois.extend(supported_parts)
+                        logger.info(f"Орган '{organ}' будет собран из частей: {supported_parts}")
+                    else:
+                        logger.warning(f"Орган '{organ}' задекларирован как виртуальный, но ни одна из его частей не поддерживается ИИ.")
+                else:
+                    logger.warning(f"Орган '{organ}' не поддерживается текущей версией TotalSegmentator и будет пропущен.")
+            
+            # Удаляем дубликаты и сортируем
+            totalseg_rois = sorted(list(set(totalseg_rois)))
+            logger.info(f"Адаптированный список ROI для TotalSegmentator: {totalseg_rois}")
+
         # Запуск TotalSegmentator через внешний процесс subprocess для предотвращения крашей на Windows
         import subprocess
         
@@ -393,8 +447,18 @@ def run_pipeline(
             cmd.append("--fast")
             
         if target_organs:
-            cmd.append("--roi_subset")
-            cmd.extend(target_organs)
+            # Передаем адаптированные органы
+            if totalseg_rois:
+                cmd.append("--roi_subset")
+                cmd.extend(totalseg_rois)
+            else:
+                # Если в результате адаптации список пуст (например, выбран только rectum),
+                # передаем один заведомо существующий орган, чтобы процесс не упал из-за отсутствия параметров,
+                # либо генерируем исключение с понятным описанием.
+                raise RuntimeError(
+                    "Ни один из выбранных органов не поддерживается текущей версией TotalSegmentator.\n"
+                    "Пожалуйста, выберите другие органы риска (например, мочевой пузырь или кости)."
+                )
             
         logger.info(f"Запуск внешнего процесса TotalSegmentator: {' '.join(cmd)}")
         
@@ -432,6 +496,50 @@ def run_pipeline(
             raise RuntimeError(f"Процесс TotalSegmentator завершился с кодом ошибки {return_code}")
             
         logger.info(f"Шаг 2 успешно завершен за {time.time() - step_start:.2f} сек.")
+
+        # ----------------------------------------------------------------------
+        # Постобработка: сборка виртуальных органов (например, цельных легких из долей)
+        # ----------------------------------------------------------------------
+        logger.info("--- Постобработка: Сборка цельных легких из долей ИИ ---")
+        try:
+            import nibabel as nib
+            import numpy as np
+            
+            # Наш маппинг виртуальных органов
+            POST_VIRTUAL_MAP = {
+                "lung_left": ["lung_upper_lobe_left", "lung_lower_lobe_left"],
+                "lung_right": ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"]
+            }
+            
+            for virtual_organ, parts in POST_VIRTUAL_MAP.items():
+                part_files = [segmentation_dir / f"{part}.nii.gz" for part in parts]
+                existing_part_files = [f for f in part_files if f.exists()]
+                
+                if existing_part_files:
+                    logger.info(f"Сборка цельного органа '{virtual_organ}' из долей: {[f.name for f in existing_part_files]}")
+                    # Загружаем первую маску как основу
+                    base_nii = nib.load(str(existing_part_files[0]))
+                    base_data = base_nii.get_fdata() > 0.5
+                    
+                    # Объединяем логическим ИЛИ со всеми остальными частями
+                    for part_file in existing_part_files[1:]:
+                        part_data = nib.load(str(part_file)).get_fdata() > 0.5
+                        base_data = base_data | part_data
+                        
+                    # Создаем новый NIfTI-файл на основе геометрии первого файла
+                    merged_nii = nib.Nifti1Image(base_data.astype(np.uint8), base_nii.affine, base_nii.header)
+                    merged_file_path = segmentation_dir / f"{virtual_organ}.nii.gz"
+                    nib.save(merged_nii, str(merged_file_path))
+                    logger.info(f"Цельный орган успешно собран и сохранен как: {merged_file_path.name}")
+                    
+                    # Удаляем исходные файлы частей, чтобы они не дублировались
+                    for part_file in existing_part_files:
+                        try:
+                            part_file.unlink()
+                        except Exception as e:
+                            logger.debug(f"Не удалось удалить файл части {part_file.name}: {e}")
+        except Exception as e:
+            logger.error(f"Не удалось завершить сборку виртуальных органов: {e}")
 
         # ----------------------------------------------------------------------
         # Шаг 3: Очистка временных файлов
