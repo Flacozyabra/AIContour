@@ -139,13 +139,14 @@ def verify_dicom_directory(dicom_dir: Path) -> int:
     return num_files
 
 
-def run_pipeline(dicom_dir_path: str, output_dir_path: str, preset_name: str) -> None:
+def run_pipeline(dicom_dir_path: str, output_dir_path: str, preset_name: str, highres: bool = False) -> None:
     """
     Основной пайплайн выполнения автооконтурирования органов риска на КТ.
 
     :param dicom_dir_path: Путь к директории с исходными DICOM КТ-слайсами.
     :param output_dir_path: Путь для сохранения итогового rtstruct.dcm.
     :param preset_name: Название используемого пресета OAR.
+    :param highres: Использовать ли клинически качественный режим 1.5 мм (вместо быстрого 3 мм).
     """
     start_time = time.time()
     dicom_dir = Path(dicom_dir_path).resolve()
@@ -195,11 +196,17 @@ def run_pipeline(dicom_dir_path: str, output_dir_path: str, preset_name: str) ->
         from totalsegmentator.python_api import totalsegmentator
         
         step_start = time.time()
-        logger.warning(
-            "ВНИМАНИЕ: Запуск сегментации принудительно на CPU в быстром режиме (fast=True). "
-            "При первом запуске скрипт автоматически скачает веса модели (~150-200 МБ) из сети. "
-            "Процесс сегментации на CPU может занять от 2 до 5 минут в зависимости от ПК."
-        )
+        if highres:
+            logger.warning(
+                "ВНИМАНИЕ: Запуск сегментации принудительно на CPU в ВЫСОКОМ клиническом качестве (fast=False, 1.5 мм). "
+                "Это обеспечит идеально плавные контуры органов без грубых краев. "
+                "Процесс на CPU может занять от 5 до 10 минут в зависимости от производительности ПК. Пожалуйста, подождите!"
+            )
+        else:
+            logger.warning(
+                "ВНИМАНИЕ: Запуск сегментации принудительно на CPU в БЫСТРОМ режиме (fast=True, 3 мм). "
+                "Для клинического качества и идеально плавных краев запустите скрипт с флагом --highres."
+            )
         
         segmentation_dir.mkdir(parents=True, exist_ok=True)
         
@@ -208,7 +215,7 @@ def run_pipeline(dicom_dir_path: str, output_dir_path: str, preset_name: str) ->
             input=str(nifti_ct_path),
             output=str(segmentation_dir),
             device="cpu",
-            fast=True
+            fast=not highres
         )
         
         logger.info(f"Шаг 2 успешно завершен за {time.time() - step_start:.2f} сек.")
@@ -247,7 +254,9 @@ def run_pipeline(dicom_dir_path: str, output_dir_path: str, preset_name: str) ->
         if not mask_files:
             raise RuntimeError("Не найдено масок органов после сегментации.")
             
+        detected_organs = sorted([f.name.replace(".nii.gz", "") for f in mask_files])
         logger.info(f"Обнаружено сегментированных масок органов: {len(mask_files)}")
+        logger.info(f"Список всех определенных ИИ органов на КТ: {detected_organs}")
         
         # Загружаем выбранный пресет органов
         target_organs = PRESETS.get(preset_name)
@@ -349,6 +358,11 @@ if __name__ == "__main__":
         choices=list(PRESETS.keys()) + ["all"],
         help="Пресет органов риска для экспорта (по умолчанию: abdominal_oar)."
     )
+    parser.add_argument(
+        "-hr", "--highres",
+        action="store_true",
+        help="Запустить сегментацию в высоком качестве (1.5 мм разрешение вместо 3 мм). Обеспечивает идеально гладкие края контуров."
+    )
     
     args = parser.parse_args()
-    run_pipeline(args.input, args.output, args.preset)
+    run_pipeline(args.input, args.output, args.preset, args.highres)
