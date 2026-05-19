@@ -70,6 +70,7 @@ logger = logging.getLogger("AutoContour")
 # Пресеты органов риска (OAR) для оптимизации экспорта (системные)
 PRESETS: Dict[str, List[str]] = {
     "head_neck_oar": [
+        "brain",             # Головной мозг
         "spinal_cord",       # Спинной мозг
         "thyroid_gland",     # Щитовидная железа
         "skull",             # Череп
@@ -148,7 +149,8 @@ ORGAN_COLORS: Dict[str, List[int]] = {
     "sacrum": [141, 110, 99],          # Серо-коричневый
     "spinal_cord": [0, 255, 0],        # Зеленый
     "thyroid_gland": [255, 105, 180],  # Розовый
-    "skull": [255, 228, 196]           # Бежевый
+    "skull": [255, 228, 196],          # Бежевый
+    "brain": [135, 206, 250]           # Небесно-голубой
 }
 
 # Полный перечень всех OAR, доступных в интерфейсе
@@ -158,7 +160,8 @@ ALL_ORGANS = [
     "lung_left", "lung_right", "trachea", "esophagus", "pancreas",
     "duodenum", "adrenal_gland_left", "adrenal_gland_right", "pulmonary_artery",
     "small_bowel", "prostate", "rectum", "colon", "femur_left", "femur_right",
-    "hip_left", "hip_right", "sacrum", "spinal_cord", "thyroid_gland", "skull"
+    "hip_left", "hip_right", "sacrum", "spinal_cord", "thyroid_gland", "skull",
+    "brain"
 ]
 
 # Отображаемые на русском языке имена для списка интерфейса
@@ -193,7 +196,8 @@ ORGAN_RU_NAMES = {
     "sacrum": "Крестец (Sacrum)",
     "spinal_cord": "Спинной мозг (Spinal Cord)",
     "thyroid_gland": "Щитовидная железа (Thyroid Gland)",
-    "skull": "Череп (Skull)"
+    "skull": "Череп (Skull)",
+    "brain": "Головной мозг (Brain)"
 }
 
 # Карта пресетов для GUI
@@ -983,7 +987,7 @@ if PYQT_AVAILABLE:
             # Заполнение списка с группировкой по анатомическим областям (по протоколам QUANTEC/TG-263)
             ORGAN_GROUPS = {
                 "--- ГОЛОВА И ШЕЯ ---": [
-                    "spinal_cord", "thyroid_gland", "skull", "trachea", "esophagus"
+                    "brain", "spinal_cord", "thyroid_gland", "skull", "trachea", "esophagus"
                 ],
                 "--- ГРУДНАЯ КЛЕТКА ---": [
                     "heart", "lung_left", "lung_right", "trachea", "esophagus", "aorta", "pulmonary_artery"
