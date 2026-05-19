@@ -1019,7 +1019,7 @@ if PYQT_AVAILABLE:
 
         def append_log(self, message: str, color: str):
             """Потокобезопасное добавление логов в текстовое окно."""
-            self.log_edit.appendHtml(f"<span style='color: {color};'>{message}</span>")
+            self.log_edit.append(f"<span style='color: {color};'>{message}</span>")
             self.log_edit.moveCursor(QTextCursor.MoveOperation.End)
 
         def start_segmentation(self):
