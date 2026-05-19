@@ -1,0 +1,6 @@
+numpy
+pydicom
+dicom2nifti
+totalsegmentator
+rt-utils
+nibabel
