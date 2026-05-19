@@ -159,8 +159,9 @@ def run_pipeline(dicom_dir_path: str, output_dir_path: str, preset_name: str) ->
         step_start = time.time()
         logger.info(f"Сборка 3D-тома NIfTI из {dicom_dir}... Это может занять некоторое время.")
         
-        # Запуск конвертации с правильной функцией dicom_series_to_nifti
-        dicom2nifti.dicom_series_to_nifti(str(dicom_dir), str(nifti_ct_path), reorient_nifti=True)
+        # Запуск конвертации без реориентации (reorient_nifti=False), чтобы сохранить
+        # оригинальную геометрию DICOM-координат для точного совмещения в rt-utils.
+        dicom2nifti.dicom_series_to_nifti(str(dicom_dir), str(nifti_ct_path), reorient_nifti=False)
         
         if not nifti_ct_path.exists():
             raise RuntimeError("Не удалось создать временный NIfTI-файл КТ.")
