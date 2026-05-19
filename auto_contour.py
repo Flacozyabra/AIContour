@@ -575,17 +575,34 @@ def run_pipeline(
         
         # Инициализируем или загружаем существующий RTSTRUCT
         existing_rois = []
+        rtstruct = None
+        
         if merge_mode and existing_rtstruct_path:
-            logger.info(f"Загрузка существующего RTSTRUCT для слияния: {existing_rtstruct_path}")
-            rtstruct = RTStructBuilder.create_from(
-                dicom_series_path=str(dicom_dir),
-                rt_struct_path=str(existing_rtstruct_path)
-            )
-            existing_rois = rtstruct.get_roi_names()
-            logger.info(f"Существующие структуры врача в файле: {existing_rois}")
-        else:
+            rt_path = Path(existing_rtstruct_path)
+            if rt_path.exists():
+                try:
+                    logger.info(f"Загрузка существующего RTSTRUCT для слияния: {rt_path}")
+                    rtstruct = RTStructBuilder.create_from(
+                        dicom_series_path=str(dicom_dir),
+                        rt_struct_path=str(rt_path)
+                    )
+                    existing_rois = rtstruct.get_roi_names()
+                    logger.info(f"Существующие структуры врача в файле: {existing_rois}")
+                except Exception as e:
+                    logger.error(
+                        f"Не удалось загрузить RTSTRUCT '{rt_path}' для слияния: {e}. "
+                        f"Пайплайн автоматически переключен в режим создания НОВОГО файла во избежание потери результатов ИИ."
+                    )
+            else:
+                logger.error(
+                    f"Файл RTSTRUCT для слияния не найден на диске: '{rt_path}'. "
+                    f"Пайплайн автоматически переключен в режим создания НОВОГО файла во избежание потери результатов ИИ."
+                )
+
+        if rtstruct is None:
             logger.info("Инициализация нового RTSTRUCT считыванием оригинальной геометрии DICOM серии...")
             rtstruct = RTStructBuilder.create_new(dicom_series_path=str(dicom_dir))
+            existing_rtstruct_path = None
         
         added_count = 0
         for mask_file in mask_files:
@@ -1561,12 +1578,29 @@ if PYQT_AVAILABLE:
                 QMessageBox.warning(self, "Предупреждение", "Не выбрано ни одного органа для сегментирования!")
                 return
                 
+            merge_mode = self.radio_merge.isChecked()
+            
+            # Быстрая валидация существования файла RTSTRUCT при слиянии
+            if merge_mode:
+                if not self.existing_rtstruct_path or not os.path.exists(self.existing_rtstruct_path):
+                    QMessageBox.critical(
+                        self, 
+                        "Ошибка слияния", 
+                        "Выбран режим слияния с существующим RTSTRUCT, но файл разметки не найден по указанному пути!\n\n"
+                        "Возможно, он был перемещен или удален. Укажите папку с КТ заново или выберите режим создания нового файла."
+                    )
+                    # Сбрасываем статус и радиокнопки
+                    self.status_rtstruct_label.setText("Файл RTSTRUCT отсутствует на диске!")
+                    self.status_rtstruct_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
+                    self.radio_merge.setEnabled(False)
+                    self.radio_new.setEnabled(False)
+                    self.radio_new.setChecked(True)
+                    return
+            
             # Блокируем интерфейс
             self.set_ui_enabled(False)
             self.log_edit.clear()
             self.progress_bar.setValue(0)
-            
-            merge_mode = self.radio_merge.isChecked()
             preset_name = self.preset_combo.currentText()
             
             preset_key = "abdominal_oar"
