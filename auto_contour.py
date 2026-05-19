@@ -268,7 +268,9 @@ def run_pipeline(
     selected_organs: Optional[List[str]] = None,
     merge_mode: bool = False,
     existing_rtstruct_path: Optional[str] = None,
-    step_callback: Optional[Callable[[str], None]] = None
+    step_callback: Optional[Callable[[str], None]] = None,
+    is_cancelled_cb: Optional[Callable[[], bool]] = None,
+    register_process_cb: Optional[Callable[[Any], None]] = None
 ) -> None:
     """
     Основной пайплайн выполнения автооконтурирования органов риска на КТ.
@@ -285,6 +287,9 @@ def run_pipeline(
     segmentation_dir = temp_dir / "temp_masks"
     
     try:
+        if is_cancelled_cb and is_cancelled_cb():
+            raise RuntimeError("Операция отменена пользователем.")
+            
         # Проверка DICOM-файлов
         verify_dicom_directory(dicom_dir)
         
@@ -481,8 +486,17 @@ def run_pipeline(
             startupinfo=startupinfo
         )
         
-        # Чтение вывода в реальном времени
+        if register_process_cb:
+            register_process_cb(process)
+            
+        # Чтение вывода в реальном времени с поддержкой мгновенной отмены
         while True:
+            if is_cancelled_cb and is_cancelled_cb():
+                if process.poll() is None:
+                    logger.info("Отмена: Принудительное завершение процесса TotalSegmentator...")
+                    process.kill()
+                raise RuntimeError("Операция отменена пользователем.")
+                
             line = process.stdout.readline()
             if not line and process.poll() is not None:
                 break
@@ -541,6 +555,9 @@ def run_pipeline(
         except Exception as e:
             logger.error(f"Не удалось завершить сборку виртуальных органов: {e}")
 
+        if is_cancelled_cb and is_cancelled_cb():
+            raise RuntimeError("Операция отменена пользователем.")
+
         # ----------------------------------------------------------------------
         # Шаг 3: Очистка временных файлов
         # ----------------------------------------------------------------------
@@ -554,6 +571,9 @@ def run_pipeline(
             
         gc.collect()
         logger.info(f"Шаг 3 успешно завершен за {time.time() - step_start:.2f} сек. Память очищена.")
+
+        if is_cancelled_cb and is_cancelled_cb():
+            raise RuntimeError("Операция отменена пользователем.")
 
         # ----------------------------------------------------------------------
         # Шаг 4: Сборка масок в DICOM RTSTRUCT
@@ -644,6 +664,9 @@ def run_pipeline(
         if added_count == 0:
             raise RuntimeError("В RTSTRUCT не было добавлено ни одного OAR. Проверьте соответствие КТ-области выбранным органам.")
             
+        if is_cancelled_cb and is_cancelled_cb():
+            raise RuntimeError("Операция отменена пользователем.")
+
         # ----------------------------------------------------------------------
         # Шаг 5: Сохранение итогового файла
         # ----------------------------------------------------------------------
@@ -777,11 +800,28 @@ if PYQT_AVAILABLE:
             self.selected_organs = selected_organs
             self.merge_mode = merge_mode
             self.existing_rtstruct_path = existing_rtstruct_path
+            self.is_cancelled = False
+            self.process = None
+
+        def cancel(self):
+            self.is_cancelled = True
+            if self.process and self.process.poll() is None:
+                try:
+                    logger.info("Отмена: принудительное завершение процесса TotalSegmentator...")
+                    self.process.kill()
+                except Exception as e:
+                    logger.error(f"Не удалось принудительно завершить процесс: {e}")
 
         def run(self):
             try:
                 def callback(step_text: str):
                     self.step_signal.emit(step_text)
+                    
+                def reg_proc(p):
+                    self.process = p
+                    
+                def is_canc():
+                    return self.is_cancelled
 
                 run_pipeline(
                     dicom_dir_path=self.dicom_dir,
@@ -791,9 +831,14 @@ if PYQT_AVAILABLE:
                     selected_organs=self.selected_organs,
                     merge_mode=self.merge_mode,
                     existing_rtstruct_path=self.existing_rtstruct_path,
-                    step_callback=callback
+                    step_callback=callback,
+                    is_cancelled_cb=is_canc,
+                    register_process_cb=reg_proc
                 )
-                self.finished_signal.emit(True, "Автооконтурирование успешно завершено!")
+                if self.is_cancelled:
+                    self.finished_signal.emit(False, "Операция отменена пользователем.")
+                else:
+                    self.finished_signal.emit(True, "Автооконтурирование успешно завершено!")
             except Exception as e:
                 self.finished_signal.emit(False, str(e))
 
@@ -1552,7 +1597,22 @@ if PYQT_AVAILABLE:
             self.log_edit.moveCursor(QTextCursor.MoveOperation.End)
 
         def start_segmentation(self):
-            """Запускает процесс сегментации."""
+            """Запускает процесс сегментации или отменяет его, если он уже запущен."""
+            if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+                # Запрашиваем подтверждение отмены
+                reply = QMessageBox.question(
+                    self, 
+                    "Подтверждение отмены", 
+                    "Вы действительно хотите прервать процесс автоматического оконтурирования?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.status_step_label.setText("Отмена процесса...")
+                    self.status_step_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
+                    self.worker.cancel()
+                return
+
             dicom_dir = self.input_edit.text().strip()
             output_dir = self.output_edit.text().strip()
             
@@ -1643,11 +1703,17 @@ if PYQT_AVAILABLE:
             self.sound_check.setEnabled(enabled)
             self.radio_merge.setEnabled(enabled if self.existing_rtstruct_path else False)
             self.radio_new.setEnabled(enabled if self.existing_rtstruct_path else False)
-            self.btn_run.setEnabled(enabled)
+            
+            # Кнопка запуска/отмены ВСЕГДА активна для возможности прерывания
+            self.btn_run.setEnabled(True)
             if enabled:
                 self.btn_run.setText("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ")
+                self.btn_run.setStyleSheet("")  # Сброс к базовому стилю QSS
             else:
-                self.btn_run.setText("ВЫПОЛНЯЕТСЯ СЕГМЕНТАЦИЯ...")
+                self.btn_run.setText("ОТМЕНИТЬ РАСЧЕТ ❌")
+                self.btn_run.setStyleSheet(
+                    "background-color: #c0392b; color: white; font-weight: bold; border: 1px solid #962d22;"
+                )
 
         def update_activity_animation(self):
             """Обновляет анимацию вращения спиннера и плавного пульсирования цвета."""
@@ -1692,8 +1758,13 @@ if PYQT_AVAILABLE:
                 QMessageBox.information(self, "Успех", "Автоматическое оконтурирование завершено успешно!")
             else:
                 self.progress_bar.setValue(0)
-                self.status_step_label.setText("Текущий шаг: Ошибка во время расчетов!")
-                QMessageBox.critical(self, "Критическая ошибка", f"Произошел сбой при сегментации:\n{message}")
+                if "отменена пользователем" in message.lower() or "отменен пользователем" in message.lower():
+                    self.status_step_label.setText("Текущий шаг: Расчет отменен!")
+                    self.status_step_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
+                    QMessageBox.warning(self, "Предупреждение", "Процесс автоматического оконтурирования был прерван пользователем.")
+                else:
+                    self.status_step_label.setText("Текущий шаг: Ошибка во время расчетов!")
+                    QMessageBox.critical(self, "Критическая ошибка", f"Произошел сбой при сегментации:\n{message}")
 
         def on_step_changed(self, step_text: str):
             """Слот изменения текущего текстового шага пайплайна."""
