@@ -148,12 +148,19 @@ def run_pipeline(dicom_dir_path: str, output_dir_path: str, preset_name: str) ->
         # ----------------------------------------------------------------------
         logger.info("--- Шаг 1 из 5: Конвертация DICOM в 3D NIfTI объем ---")
         import dicom2nifti
+        import dicom2nifti.settings as settings
+        
+        # Отключаем строгие проверки геометрии, чтобы скрипт не падал на клинических КТ
+        # с неравномерным шагом, малым числом срезов или небольшим наклоном гентри.
+        settings.disable_validate_slice_increment()
+        settings.disable_validate_orthogonal()
+        settings.disable_validate_orientation()
         
         step_start = time.time()
         logger.info(f"Сборка 3D-тома NIfTI из {dicom_dir}... Это может занять некоторое время.")
         
-        # Запуск конвертации
-        dicom2nifti.dicom_to_nifti(str(dicom_dir), str(nifti_ct_path))
+        # Запуск конвертации с правильной функцией dicom_series_to_nifti
+        dicom2nifti.dicom_series_to_nifti(str(dicom_dir), str(nifti_ct_path), reorient_nifti=True)
         
         if not nifti_ct_path.exists():
             raise RuntimeError("Не удалось создать временный NIfTI-файл КТ.")
