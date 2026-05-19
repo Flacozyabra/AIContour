@@ -29,6 +29,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import sys
 import gc
 import time
+import math
 import argparse
 import shutil
 import logging
@@ -52,7 +53,7 @@ try:
         QRadioButton, QButtonGroup, QTextEdit, QProgressBar, QFileDialog,
         QMessageBox, QFrame, QSplitter, QCheckBox, QDialog, QTextBrowser
     )
-    from PyQt6.QtCore import QThread, pyqtSignal, Qt, QObject, QSettings
+    from PyQt6.QtCore import QThread, pyqtSignal, Qt, QObject, QSettings, QTimer
     from PyQt6.QtGui import QTextCursor, QBrush, QColor, QFont
     PYQT_AVAILABLE = True
 except ImportError:
@@ -914,6 +915,15 @@ if PYQT_AVAILABLE:
             self.log_handler = QTextEditLogHandler(self.log_signaler)
             logger.addHandler(self.log_handler)
 
+            # Таймер активности (спиннер + пульсация цвета)
+            self.activity_timer = QTimer(self)
+            self.activity_timer.setInterval(120)
+            self.activity_timer.timeout.connect(self.update_activity_animation)
+            self.spinner_index = 0
+            self.pulse_tick = 0
+            self.current_step_base_text = "Ожидание запуска..."
+            self.SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
             self.init_ui()
             self.load_settings()
 
@@ -1462,7 +1472,13 @@ if PYQT_AVAILABLE:
             )
             self.worker.finished_signal.connect(self.on_segmentation_finished)
             self.worker.step_signal.connect(self.on_step_changed)
-            self.status_step_label.setText("Текущий шаг: Подготовка пайплайна...")
+            
+            # Запуск анимации активности
+            self.current_step_base_text = "Подготовка пайплайна..."
+            self.spinner_index = 0
+            self.pulse_tick = 0
+            self.activity_timer.start()
+            
             self.worker.start()
 
         def set_ui_enabled(self, enabled: bool):
@@ -1479,9 +1495,31 @@ if PYQT_AVAILABLE:
             else:
                 self.btn_run.setText("ВЫПОЛНЯЕТСЯ СЕГМЕНТАЦИЯ...")
 
+        def update_activity_animation(self):
+            """Обновляет анимацию вращения спиннера и плавного пульсирования цвета."""
+            self.spinner_index = (self.spinner_index + 1) % len(self.SPINNER_FRAMES)
+            spinner_char = self.SPINNER_FRAMES[self.spinner_index]
+            self.status_step_label.setText(f"{self.current_step_base_text} {spinner_char}")
+            
+            # Анимация плавного пульсирования цвета (синусоида)
+            self.pulse_tick += 1
+            factor = (math.sin(self.pulse_tick * 0.15) + 1.0) / 2.0
+            
+            # Интерполируем между #007acc (rgb 0, 122, 204) и #00e5ff (rgb 0, 229, 255)
+            g = int(122 + (229 - 122) * factor)
+            b = int(204 + (255 - 204) * factor)
+            
+            self.status_step_label.setStyleSheet(
+                f"color: rgb(0, {g}, {b}); font-weight: bold; font-style: italic;"
+            )
+
         def on_segmentation_finished(self, success: bool, message: str):
             self.set_ui_enabled(True)
             self.progress_bar.setRange(0, 100)
+            
+            # Останавливаем анимацию активности и сбрасываем стиль на статичный приятный синий
+            self.activity_timer.stop()
+            self.status_step_label.setStyleSheet("color: #007acc; font-weight: bold; font-style: italic;")
             
             if success:
                 self.progress_bar.setValue(100)
@@ -1494,7 +1532,8 @@ if PYQT_AVAILABLE:
 
         def on_step_changed(self, step_text: str):
             """Слот изменения текущего текстового шага пайплайна."""
-            self.status_step_label.setText(step_text)
+            self.current_step_base_text = step_text
+            self.status_step_label.setText(f"{step_text} {self.SPINNER_FRAMES[self.spinner_index]}")
             
             # Динамическое обновление процентов на основе шагов пайплайна
             if "Шаг 1" in step_text:
