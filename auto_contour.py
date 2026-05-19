@@ -839,6 +839,8 @@ if PYQT_AVAILABLE:
         text-align: center;
         background-color: #1e1e1e;
         height: 18px;
+        color: #ffffff;
+        font-weight: bold;
     }
 
     QProgressBar::chunk {
@@ -1132,6 +1134,8 @@ if PYQT_AVAILABLE:
             self.progress_bar = QProgressBar()
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
+            self.progress_bar.setTextVisible(True)
+            self.progress_bar.setFormat("%p%")
 
             self.btn_run = QPushButton("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ")
             self.btn_run.setObjectName("btnRun")
@@ -1431,7 +1435,7 @@ if PYQT_AVAILABLE:
             # Блокируем интерфейс
             self.set_ui_enabled(False)
             self.log_edit.clear()
-            self.progress_bar.setRange(0, 0)  # Режим marquee (ожидание)
+            self.progress_bar.setValue(0)
             
             merge_mode = self.radio_merge.isChecked()
             preset_name = self.preset_combo.currentText()
@@ -1491,6 +1495,18 @@ if PYQT_AVAILABLE:
         def on_step_changed(self, step_text: str):
             """Слот изменения текущего текстового шага пайплайна."""
             self.status_step_label.setText(step_text)
+            
+            # Динамическое обновление процентов на основе шагов пайплайна
+            if "Шаг 1" in step_text:
+                self.progress_bar.setValue(10)
+            elif "Шаг 2" in step_text:
+                self.progress_bar.setValue(30)
+            elif "Шаг 3" in step_text:
+                self.progress_bar.setValue(75)
+            elif "Шаг 4" in step_text:
+                self.progress_bar.setValue(85)
+            elif "Шаг 5" in step_text:
+                self.progress_bar.setValue(95)
 
         def show_help(self):
             """Открывает диалоговое окно со справкой и дисклеймером."""
