@@ -23,6 +23,9 @@
 """
 
 import os
+# Предотвращение крашей из-за дублирования библиотек OpenMP на Windows
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import sys
 import gc
 import time
@@ -31,6 +34,15 @@ import shutil
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional
+
+# Предварительный импорт необходимых библиотек на главном потоке
+import numpy as np
+import pydicom
+import nibabel as nib
+import dicom2nifti
+import dicom2nifti.settings as settings
+from rt_utils import RTStructBuilder
+
 
 # Импорт PyQt6 для GUI режима
 try:
@@ -210,8 +222,6 @@ def run_pipeline(
         # Шаг 1: Конвертация DICOM -> NIfTI
         # ----------------------------------------------------------------------
         logger.info("--- Шаг 1 из 5: Конвертация DICOM в 3D NIfTI объем ---")
-        import dicom2nifti
-        import dicom2nifti.settings as settings
         
         settings.disable_validate_slice_increment()
         settings.disable_validate_orthogonal()
@@ -232,7 +242,6 @@ def run_pipeline(
         # Шаг 2: ИИ-сегментация (TotalSegmentator на CPU с оптимизацией)
         # ----------------------------------------------------------------------
         logger.info("--- Шаг 2 из 5: ИИ-сегментация с помощью TotalSegmentator ---")
-        from totalsegmentator.python_api import totalsegmentator
         
         step_start = time.time()
         if highres:
@@ -260,28 +269,75 @@ def run_pipeline(
                 logger.warning(f"Пресет '{preset_name}' не найден. Будут экспортированы все найденные OAR.")
                 target_organs = None
         
-        # Запуск TotalSegmentator
-        totalsegmentator(
-            input=str(nifti_ct_path),
-            output=str(segmentation_dir),
-            device="cpu",
-            fast=not highres,
-            roi_subset=target_organs
+        # Запуск TotalSegmentator через внешний процесс subprocess для предотвращения крашей на Windows
+        import subprocess
+        
+        # Находим путь к исполняемому файлу TotalSegmentator в текущем виртуальном окружении
+        exe_dir = Path(sys.executable).parent
+        totalseg_exe = exe_dir / "TotalSegmentator.exe"
+        if not totalseg_exe.exists():
+            totalseg_exe = exe_dir / "TotalSegmentator"
+            
+        if not totalseg_exe.exists():
+            totalseg_exe = Path("TotalSegmentator")
+            
+        cmd = [
+            str(totalseg_exe),
+            "-i", str(nifti_ct_path),
+            "-o", str(segmentation_dir),
+            "--device", "cpu"
+        ]
+        
+        if not highres:
+            cmd.append("--fast")
+            
+        if target_organs:
+            cmd.append("--roi_subset")
+            cmd.extend(target_organs)
+            
+        logger.info(f"Запуск внешнего процесса TotalSegmentator: {' '.join(cmd)}")
+        
+        # Скрываем черное окно консоли на Windows при запуске subprocess
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            
+        # Запуск процесса с перехватом stdout и stderr
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            startupinfo=startupinfo
         )
         
+        # Чтение вывода в реальном времени
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                clean_line = line.strip()
+                if clean_line:
+                    logger.info(f"[TotalSegmentator]: {clean_line}")
+                    
+        return_code = process.wait()
+        if return_code != 0:
+            raise RuntimeError(f"Процесс TotalSegmentator завершился с кодом ошибки {return_code}")
+            
         logger.info(f"Шаг 2 успешно завершен за {time.time() - step_start:.2f} сек.")
 
         # ----------------------------------------------------------------------
-        # Шаг 3: Принудительная очистка памяти
+        # Шаг 3: Очистка временных файлов
         # ----------------------------------------------------------------------
-        logger.info("--- Шаг 3 из 5: Выгрузка моделей и принудительная очистка ОЗУ ---")
+        logger.info("--- Шаг 3 из 5: Удаление временного NIfTI КТ и очистка ОЗУ ---")
         step_start = time.time()
         
-        if 'totalsegmentator' in sys.modules:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
         if nifti_ct_path.exists():
             nifti_ct_path.unlink()
             
@@ -292,9 +348,6 @@ def run_pipeline(
         # Шаг 4: Сборка масок в DICOM RTSTRUCT
         # ----------------------------------------------------------------------
         logger.info("--- Шаг 4 из 5: Сборка RTSTRUCT и привязка к геометрии DICOM ---")
-        import nibabel as nib
-        import numpy as np
-        from rt_utils import RTStructBuilder
         
         step_start = time.time()
         
