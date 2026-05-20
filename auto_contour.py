@@ -500,7 +500,7 @@ if PYQT_AVAILABLE:
             self.load_settings()
 
         def init_ui(self):
-            self.setStyleSheet(self.DARK_QSS)
+            self.setStyleSheet(DARK_QSS)
 
             # Главный виджет
             main_widget = QWidget()
