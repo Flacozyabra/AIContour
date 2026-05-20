@@ -803,7 +803,14 @@ if PYQT_AVAILABLE:
 
             # Подключаем сохранение настроек
             self.sound_check.stateChanged.connect(self.on_sound_check_changed)
-        
+            self.clean_blobs_check.stateChanged.connect(self.save_settings)
+            self.smoothing_check.stateChanged.connect(self.save_settings)
+            self.precision_combo.currentIndexChanged.connect(self.save_settings)
+            self.smoothing_combo.currentIndexChanged.connect(self.save_settings)
+            self.color_preset_combo.currentIndexChanged.connect(self.save_settings)
+            
+            splitter.setSizes([430, 490])
+
         def on_sound_check_changed(self):
             self.save_settings()
             if self.sound_check.isChecked():
@@ -812,13 +819,6 @@ if PYQT_AVAILABLE:
                     winsound.Beep(523, 150)
                 except Exception:
                     pass
-            self.clean_blobs_check.stateChanged.connect(self.save_settings)
-            self.smoothing_check.stateChanged.connect(self.save_settings)
-            self.precision_combo.currentIndexChanged.connect(self.save_settings)
-            self.smoothing_combo.currentIndexChanged.connect(self.save_settings)
-            self.color_preset_combo.currentIndexChanged.connect(self.save_settings)
-            
-            splitter.setSizes([430, 490])
 
         def init_presets_and_organs(self):
             """Инициализирует комбобокс пресетов и список органов из presets.json."""
