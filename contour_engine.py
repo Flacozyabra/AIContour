@@ -32,6 +32,9 @@ import pydicom
 import nibabel as nib
 import dicom2nifti
 import dicom2nifti.settings as d2n_settings
+import warnings
+import rt_utils.rtstruct_builder
+rt_utils.rtstruct_builder.warnings = warnings
 from rt_utils import RTStructBuilder
 from scipy.ndimage import label, gaussian_filter
 
@@ -566,7 +569,8 @@ class ContourEngine:
                         logger.info(f"Загрузка существующего RTSTRUCT для слияния: {rt_path}")
                         rtstruct = RTStructBuilder.create_from(
                             dicom_series_path=str(dicom_dir),
-                            rt_struct_path=str(rt_path)
+                            rt_struct_path=str(rt_path),
+                            warn_only=True
                         )
                         existing_rois = rtstruct.get_roi_names()
                         logger.info(f"Существующие структуры в файле: {existing_rois}")
