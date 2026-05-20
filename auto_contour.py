@@ -3,720 +3,61 @@
 
 """
 ================================================================================
-Скрипт автоматического оконтурирования органов риска (OAR) на КТ-исследованиях
+Скрипт автооконтурирования органов риска (OAR) на КТ: Графический интерфейс PyQt6
 ================================================================================
-Этот скрипт является MVP для сегментирования анатомических структур на КТ-снимках
-и их последующего экспорта в формат DICOM RTSTRUCT для систем планирования (TPS).
+Этот файл содержит графическую оболочку приложения AI Contour на PyQt6.
+Вся тяжелая вычислительная логика вынесена в модуль contour_engine.py.
 
 Особенности:
-1. Поддерживает два режима: графический интерфейс (GUI) и командную строку (CLI).
-2. Защищен от утечек памяти с помощью принудительного вызова сборщика мусора.
-3. Имеет гибкую систему пресетов для выбора OAR.
-4. Выполняет нейросетевую обработку в отдельном потоке (GUI не зависает).
-5. Сканирует КТ на наличие существующей разметки и позволяет слить контуры.
-
---------------------------------------------------------------------------------
-Инструкция по установке зависимостей (Windows PowerShell):
---------------------------------------------------------------------------------
-    pip install PyQt6 pydicom dicom2nifti totalsegmentator rt-utils nibabel
+1. Разделение настроек на вкладки для эргономики.
+2. Динамическое управление пресетами и цветами из presets.json.
+3. Интерактивная кастомизация цветов органов прямо в списке через QColorDialog.
+4. Выбор вычислительных ресурсов (CPU/GPU) и режимов точности TotalSegmentator.
+5. Интегрированные чекбоксы 3D постобработки (Blobs / Сглаживание).
 ================================================================================
 """
 
 import os
-# Предотвращение крашей из-за дублирования библиотек OpenMP на Windows
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
 import sys
 import gc
 import time
 import math
 import argparse
-import shutil
 import logging
-import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional
 
-# Предварительный импорт необходимых библиотек на главном потоке
-import numpy as np
-import pydicom
-import nibabel as nib
-import dicom2nifti
-import dicom2nifti.settings as settings
-from rt_utils import RTStructBuilder
-
-
-# Импорт PyQt6 для GUI режима
+# Импорт PyQt6
 try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QLabel, QLineEdit, QPushButton, QComboBox, QListWidget, QListWidgetItem,
         QRadioButton, QButtonGroup, QTextEdit, QProgressBar, QFileDialog,
-        QMessageBox, QFrame, QSplitter, QCheckBox, QDialog, QTextBrowser
+        QMessageBox, QFrame, QSplitter, QCheckBox, QDialog, QTextBrowser,
+        QTabWidget, QColorDialog, QGroupBox
     )
     from PyQt6.QtCore import QThread, pyqtSignal, Qt, QObject, QSettings, QTimer
-    from PyQt6.QtGui import QTextCursor, QBrush, QColor, QFont
+    from PyQt6.QtGui import QTextCursor, QBrush, QColor, QFont, QIcon, QPixmap
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
 
-# Настройка логирования на русском языке
+# Импортируем вычислительный движок
+try:
+    from contour_engine import ContourEngine
+except ImportError:
+    # На случай запуска без движка
+    ContourEngine = None
+
+# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(levelname)s [%(name)s]: %(message)s',
     datefmt='%H:%M:%S',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger("AutoContour")
-PRESETS: Dict[str, List[str]] = {
-    "head_neck_oar": [
-        "brain",                           # Головной мозг
-        "spinal_cord",                     # Спинной мозг
-        "thyroid_gland",                   # Щитовидная железа
-        "skull",                           # Череп
-        "trachea",                         # Трахея
-        "esophagus",                       # Пищевод
-        "common_carotid_artery_left",      # Левая сонная артерия
-        "common_carotid_artery_right"      # Правая сонная артерия
-    ],
-    "abdominal_oar": [
-        "spleen",                          # Селезенка
-        "kidney_right",                    # Правая почка
-        "kidney_left",                     # Левая почка
-        "gallbladder",                     # Желчный пузырь
-        "liver",                           # Печень
-        "stomach",                         # Желудок
-        "aorta",                           # Аорта
-        "inferior_vena_cava",              # Нижняя полая вена
-        "urinary_bladder",                 # Мочевой пузырь
-        "heart",                           # Сердце
-        "pancreas",                        # Поджелудочная железа
-        "duodenum",                        # Двенадцатиперстная кишка
-        "adrenal_gland_left",              # Левый надпочечник
-        "adrenal_gland_right",             # Правый надпочечник
-        "portal_vein_and_splenic_vein"     # Воротная/селезеночная вена
-    ],
-    "thoracic_oar": [
-        "heart",                           # Сердце
-        "lung_left",                       # Левое легкое
-        "lung_right",                      # Правое легкое
-        "trachea",                         # Трахея
-        "aorta",                           # Аорта
-        "esophagus",                       # Пищевод
-        "pulmonary_artery",                # Легочная артерия
-        "superior_vena_cava",              # Верхняя полая вена
-        "sternum",                         # Грудина
-        "clavicula_left",                  # Левая ключица
-        "clavicula_right"                  # Правая ключица
-    ],
-    "pelvis_oar": [
-        "urinary_bladder",                 # Мочевой пузырь
-        "prostate",                        # Предстательная железа
-        "rectum",                          # Прямая кишка
-        "colon",                           # Кишечник
-        "small_bowel",                     # Тонкая кишка
-        "femur_left",                      # Левая бедренная кость
-        "femur_right",                     # Правая бедренная кость
-        "hip_left",                        # Левая тазовая кость
-        "hip_right",                       # Правая тазовая кость
-        "sacrum",                          # Крестец
-        "iliac_artery_left",               # Левая подвздошная артерия
-        "iliac_artery_right"               # Правая подвздошная артерия
-    ]
-}
+logger = logging.getLogger("AutoContourGUI")
 
-
-# Гармоничные цвета для отображения контуров в TPS (формат RGB)
-ORGAN_COLORS: Dict[str, List[int]] = {
-    "spleen": [156, 39, 176],         # Фиолетовый
-    "kidney_right": [3, 169, 244],     # Голубой
-    "kidney_left": [33, 150, 243],     # Синий
-    "gallbladder": [76, 175, 80],      # Зеленый
-    "liver": [139, 195, 74],          # Салатовый
-    "stomach": [255, 152, 0],         # Оранжевый
-    "aorta": [244, 67, 54],           # Красный
-    "inferior_vena_cava": [63, 81, 181], # Темно-синий
-    "urinary_bladder": [255, 235, 59],  # Желтый
-    "heart": [233, 30, 99],           # Розовый
-    "lung_left": [0, 150, 136],        # Бирюзовый
-    "lung_right": [0, 188, 212],       # Светло-бирюзовый
-    "trachea": [121, 85, 72],         # Коричневый
-    "esophagus": [158, 158, 158],     # Серый
-    "pancreas": [255, 193, 7],         # Янтарный
-    "duodenum": [173, 20, 87],         # Темно-розовый
-    "adrenal_gland_left": [255, 87, 34], # Ярко-оранжевый
-    "adrenal_gland_right": [255, 112, 67], # Светло-оранжевый
-    "pulmonary_artery": [0, 150, 255], # Ярко-голубой
-    "small_bowel": [103, 58, 183],     # Темно-фиолетовый
-    "prostate": [233, 30, 99],         # Розовый
-    "rectum": [121, 85, 72],           # Коричневый
-    "colon": [0, 121, 107],            # Темно-бирюзовый
-    "femur_left": [255, 224, 178],     # Светло-оранжевый
-    "femur_right": [255, 224, 178],    # Светло-оранжевый
-    "hip_left": [230, 238, 156],       # Салатово-желтый
-    "hip_right": [230, 238, 156],      # Салатово-желтый
-    "sacrum": [141, 110, 99],          # Серо-коричневый
-    "spinal_cord": [0, 255, 0],        # Зеленый
-    "thyroid_gland": [255, 105, 180],  # Розовый
-    "skull": [255, 228, 196],          # Бежевый
-    "brain": [135, 206, 250],          # Небесно-голубой
-    "common_carotid_artery_left": [220, 20, 60],      # Малиновый
-    "common_carotid_artery_right": [220, 20, 60],     # Малиновый
-    "superior_vena_cava": [70, 130, 180],              # Стальной синий
-    "portal_vein_and_splenic_vein": [0, 139, 139],     # Темно-бирюзовый
-    "clavicula_left": [244, 164, 96],                  # Песочно-коричневый
-    "clavicula_right": [244, 164, 96],                 # Песочно-коричневый
-    "sternum": [222, 184, 135],                        # Древесный
-    "iliac_artery_left": [255, 99, 71],                # Томатный
-    "iliac_artery_right": [255, 99, 71]                # Томатный
-}
-
-# Полный перечень всех OAR, доступных в интерфейсе
-ALL_ORGANS = [
-    "spleen", "kidney_right", "kidney_left", "gallbladder", "liver",
-    "stomach", "aorta", "inferior_vena_cava", "urinary_bladder", "heart",
-    "lung_left", "lung_right", "trachea", "esophagus", "pancreas",
-    "duodenum", "adrenal_gland_left", "adrenal_gland_right", "pulmonary_artery",
-    "small_bowel", "prostate", "rectum", "colon", "femur_left", "femur_right",
-    "hip_left", "hip_right", "sacrum", "spinal_cord", "thyroid_gland", "skull",
-    "brain", "common_carotid_artery_left", "common_carotid_artery_right",
-    "superior_vena_cava", "portal_vein_and_splenic_vein",
-    "clavicula_left", "clavicula_right", "sternum",
-    "iliac_artery_left", "iliac_artery_right"
-]
-
-# Отображаемые на русском языке имена для списка интерфейса
-ORGAN_RU_NAMES = {
-    "spleen": "Селезенка (Spleen)",
-    "kidney_right": "Правая почка (Kidney R)",
-    "kidney_left": "Левая почка (Kidney L)",
-    "gallbladder": "Желчный пузырь (Gallbladder)",
-    "liver": "Печень (Liver)",
-    "stomach": "Желудок (Stomach)",
-    "aorta": "Аорта (Aorta)",
-    "inferior_vena_cava": "Нижняя полая вена (Vena Cava)",
-    "urinary_bladder": "Мочевой пузырь (Bladder)",
-    "heart": "Сердце (Heart)",
-    "lung_left": "Левое легкое (Lung L)",
-    "lung_right": "Правое легкое (Lung R)",
-    "trachea": "Трахея (Trachea)",
-    "esophagus": "Пищевод (Esophagus)",
-    "pancreas": "Поджелудочная железа (Pancreas)",
-    "duodenum": "Двенадцатиперстная кишка (Duodenum)",
-    "adrenal_gland_left": "Левый надпочечник (Adrenal Gland L)",
-    "adrenal_gland_right": "Правый надпочечник (Adrenal Gland R)",
-    "pulmonary_artery": "Легочная артерия (Pulmonary Artery)",
-    "small_bowel": "Тонкая кишка (Small Bowel)",
-    "prostate": "Предстательная железа (Prostate)",
-    "rectum": "Прямая кишка (Rectum)",
-    "colon": "Кишечник (Colon)",
-    "femur_left": "Левое бедро (Femur L)",
-    "femur_right": "Правое бедро (Femur R)",
-    "hip_left": "Левый таз (Hip L)",
-    "hip_right": "Правый таз (Hip R)",
-    "sacrum": "Крестец (Sacrum)",
-    "spinal_cord": "Спинной мозг (Spinal Cord)",
-    "thyroid_gland": "Щитовидная железа (Thyroid Gland)",
-    "skull": "Череп (Skull)",
-    "brain": "Головной мозг (Brain)",
-    "common_carotid_artery_left": "Левая сонная артерия (Carotid A L)",
-    "common_carotid_artery_right": "Правая сонная артерия (Carotid A R)",
-    "superior_vena_cava": "Верхняя полая вена (Vena Cava Sup)",
-    "portal_vein_and_splenic_vein": "Воротная вена (Portal/Splenic V)",
-    "clavicula_left": "Левая ключица (Clavicle L)",
-    "clavicula_right": "Правая ключица (Clavicle R)",
-    "sternum": "Грудина (Sternum)",
-    "iliac_artery_left": "Левая подвздошная артерия (Iliac A L)",
-    "iliac_artery_right": "Правая подвздошная артерия (Iliac A R)"
-}
-
-# Карта пресетов для GUI
-PRESETS_MAP = {
-    "Голова и шея (Head & Neck)": PRESETS["head_neck_oar"],
-    "Грудная клетка (Thorax)": PRESETS["thoracic_oar"],
-    "Брюшная полость (Abdomen)": PRESETS["abdominal_oar"],
-    "Малый таз (Pelvis)": PRESETS["pelvis_oar"],
-    "Все органы (All)": ALL_ORGANS,
-    "Пользовательский (Custom)": []
-}
-
-
-
-def verify_dicom_directory(dicom_dir: Path) -> int:
-    """
-    Проверяет корректность входной папки DICOM и считает количество файлов.
-    """
-    if not dicom_dir.exists() or not dicom_dir.is_dir():
-        raise FileNotFoundError(f"Указанный путь к DICOM не существует или не является папкой: {dicom_dir}")
-
-    dicom_files = list(dicom_dir.glob("*.dcm")) + list(dicom_dir.glob("*.DCM"))
-    if not dicom_files:
-        dicom_files = [f for f in dicom_dir.iterdir() if f.is_file() and not f.name.startswith('.')]
-
-    num_files = len(dicom_files)
-    if num_files == 0:
-        raise FileNotFoundError(f"В папке {dicom_dir} не найдено DICOM-файлов.")
-
-    logger.info(f"Найдено DICOM файлов для обработки: {num_files}")
-    return num_files
-
-
-def run_pipeline(
-    dicom_dir_path: str,
-    output_dir_path: str,
-    preset_name: str,
-    highres: bool = False,
-    selected_organs: Optional[List[str]] = None,
-    merge_mode: bool = False,
-    existing_rtstruct_path: Optional[str] = None,
-    step_callback: Optional[Callable[[str], None]] = None,
-    is_cancelled_cb: Optional[Callable[[], bool]] = None,
-    register_process_cb: Optional[Callable[[subprocess.Popen], None]] = None
-) -> None:
-    """
-    Основной пайплайн выполнения автооконтурирования органов риска на КТ.
-    """
-    start_time = time.time()
-    dicom_dir = Path(dicom_dir_path).resolve()
-    output_dir = Path(output_dir_path).resolve()
-    
-    # Инициализация временных путей
-    temp_dir = output_dir / "temp_autocontour_workspace"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    
-    nifti_ct_path = temp_dir / "temp_ct_volume.nii.gz"
-    segmentation_dir = temp_dir / "temp_masks"
-    
-    try:
-        if is_cancelled_cb and is_cancelled_cb():
-            raise RuntimeError("Операция отменена пользователем.")
-            
-        # Проверка DICOM-файлов
-        verify_dicom_directory(dicom_dir)
-        
-        # Считывание PatientID из первого DICOM-файла для динамического именования
-        patient_id = "Unknown"
-        try:
-            dicom_files = list(dicom_dir.glob("*.dcm")) + list(dicom_dir.glob("*.DCM"))
-            if not dicom_files:
-                dicom_files = [f for f in dicom_dir.iterdir() if f.is_file() and not f.name.startswith('.')]
-            if dicom_files:
-                import pydicom
-                ds = pydicom.dcmread(str(dicom_files[0]), stop_before_pixels=True)
-                patient_id = getattr(ds, "PatientID", "Unknown")
-                logger.info(f"Успешно считан PatientID из DICOM: {patient_id}")
-        except Exception as de:
-            logger.debug(f"Не удалось считать PatientID из DICOM: {de}")
-
-        
-        # ----------------------------------------------------------------------
-        # Шаг 1: Конвертация DICOM -> NIfTI
-        # ----------------------------------------------------------------------
-        if step_callback:
-            step_callback("Шаг 1 из 5: Конвертация DICOM в NIfTI 3D объем...")
-        logger.info("--- Шаг 1 из 5: Конвертация DICOM в 3D NIfTI объем ---")
-        
-        settings.disable_validate_slice_increment()
-        settings.disable_validate_orthogonal()
-        settings.disable_validate_orientation()
-        
-        step_start = time.time()
-        logger.info(f"Сборка 3D-тома NIfTI из {dicom_dir}... Это может занять некоторое время.")
-        
-        dicom2nifti.dicom_series_to_nifti(str(dicom_dir), str(nifti_ct_path), reorient_nifti=False)
-        
-        if not nifti_ct_path.exists():
-            raise RuntimeError("Не удалось создать временный NIfTI-файл КТ.")
-            
-        logger.info(f"Шаг 1 успешно завершен за {time.time() - step_start:.2f} сек.")
-        logger.info(f"Временный NIfTI сохранен: {nifti_ct_path} ({nifti_ct_path.stat().st_size / (1024*1024):.2f} МБ)")
-
-        # ----------------------------------------------------------------------
-        # Шаг 2: ИИ-сегментация (TotalSegmentator на CPU с оптимизацией)
-        # ----------------------------------------------------------------------
-        if step_callback:
-            step_callback("Шаг 2 из 5: Сегментация органов нейросетью TotalSegmentator...")
-        logger.info("--- Шаг 2 из 5: ИИ-сегментация с помощью TotalSegmentator ---")
-        
-        step_start = time.time()
-        if highres:
-            logger.warning(
-                "ВНИМАНИЕ: Запуск сегментации принудительно на CPU в ВЫСОКОМ качестве (fast=False, 1.5 мм). "
-                "Это обеспечит плавные контуры органов. Процесс на CPU может занять 5-10 минут. Пожалуйста, подождите!"
-            )
-        else:
-            logger.warning(
-                "ВНИМАНИЕ: Запуск сегментации принудительно на CPU в БЫСТРОМ режиме (fast=True, 3 мм). "
-                "Для клинического качества и плавных краев запустите скрипт с флагом повышенного качества."
-            )
-        
-        segmentation_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Получаем выбранные органы
-        if selected_organs is not None:
-            target_organs = selected_organs
-            logger.info(f"ИИ сегментирует только выбранные OAR: {target_organs}")
-        else:
-            target_organs = PRESETS.get(preset_name)
-            if target_organs:
-                logger.info(f"ИИ сегментирует только выбранные OAR из пресета '{preset_name}': {target_organs}")
-            else:
-                logger.warning(f"Пресет '{preset_name}' не найден. Будут экспортированы все найденные OAR.")
-                target_organs = None
-        
-        # Динамически получаем список поддерживаемых органов в TotalSegmentator
-        supported_organs = set()
-        try:
-            from totalsegmentator.map_to_binary import class_map
-            # Обычно дефолтная модель - это 'total', если её нет - берем первую доступную
-            if "total" in class_map:
-                supported_organs = set(class_map["total"].values())
-            elif "total_v1" in class_map:
-                supported_organs = set(class_map["total_v1"].values())
-            else:
-                # Объединяем все доступные в class_map
-                for subset in class_map.values():
-                    supported_organs.update(subset.values())
-            logger.info(f"Динамически загружено классов TotalSegmentator: {len(supported_organs)}")
-        except Exception as e:
-            logger.warning(f"Не удалось динамически получить список классов TotalSegmentator: {e}. Будет использован базовый набор.")
-            # Резервный набор классов
-            supported_organs = {
-                "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "pancreas",
-                "adrenal_gland_right", "adrenal_gland_left", "esophagus", "trachea", "thyroid_gland",
-                "small_bowel", "duodenum", "colon", "urinary_bladder", "prostate", "sacrum", "heart",
-                "aorta", "superior_vena_cava", "inferior_vena_cava", "portal_vein_and_splenic_vein",
-                "iliac_artery_left", "iliac_artery_right", "clavicula_left", "clavicula_right",
-                "femur_left", "femur_right", "hip_left", "hip_right", "spinal_cord", "brain", "skull", "sternum"
-            }
-
-        # Карта виртуальных органов, которые мы можем собрать из долей/частей
-        VIRTUAL_ORGANS_MAP = {
-            "lung_left": ["lung_upper_lobe_left", "lung_lower_lobe_left"],
-            "lung_right": ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"]
-        }
-
-        # Адаптируем список целевых органов под поддерживаемые классы TotalSegmentator
-        totalseg_rois = []
-        if target_organs:
-            for organ in target_organs:
-                if organ in supported_organs:
-                    totalseg_rois.append(organ)
-                elif organ in VIRTUAL_ORGANS_MAP:
-                    # Если виртуальный орган (например, lung_left), проверяем, поддерживаются ли его части
-                    parts = VIRTUAL_ORGANS_MAP[organ]
-                    supported_parts = [p for p in parts if p in supported_organs]
-                    if supported_parts:
-                        totalseg_rois.extend(supported_parts)
-                        logger.info(f"Орган '{organ}' будет собран из частей: {supported_parts}")
-                    else:
-                        logger.warning(f"Орган '{organ}' задекларирован как виртуальный, но ни одна из его частей не поддерживается ИИ.")
-                else:
-                    logger.warning(f"Орган '{organ}' не поддерживается текущей версией TotalSegmentator и будет пропущен.")
-            
-            # Удаляем дубликаты и сортируем
-            totalseg_rois = sorted(list(set(totalseg_rois)))
-            logger.info(f"Адаптированный список ROI для TotalSegmentator: {totalseg_rois}")
-
-        # Запуск TotalSegmentator через внешний процесс subprocess для предотвращения крашей на Windows
-        import subprocess
-        
-        # Находим путь к исполняемому файлу TotalSegmentator в текущем виртуальном окружении
-        exe_dir = Path(sys.executable).parent
-        totalseg_exe = exe_dir / "TotalSegmentator.exe"
-        if not totalseg_exe.exists():
-            totalseg_exe = exe_dir / "TotalSegmentator"
-            
-        if not totalseg_exe.exists():
-            totalseg_exe = Path("TotalSegmentator")
-            
-        # Автоматическое определение лучшего вычислительного устройства (GPU CUDA или CPU)
-        device = "cpu"
-        try:
-            import torch
-            if torch.cuda.is_available():
-                device = "gpu"
-                logger.info("Обнаружена видеокарта с поддержкой CUDA. Сегментация будет запущена на GPU!")
-            else:
-                logger.info("Видеокарта с поддержкой CUDA не обнаружена. Сегментация будет запущена на CPU.")
-        except Exception as e:
-            logger.debug(f"Не удалось проверить доступность CUDA через PyTorch: {e}. Запуск на CPU.")
-
-        cmd = [
-            str(totalseg_exe),
-            "-i", str(nifti_ct_path),
-            "-o", str(segmentation_dir),
-            "--device", device
-        ]
-        
-        if not highres:
-            cmd.append("--fast")
-            
-        if target_organs:
-            # Передаем адаптированные органы
-            if totalseg_rois:
-                cmd.append("--roi_subset")
-                cmd.extend(totalseg_rois)
-            else:
-                # Если в результате адаптации список пуст (например, выбран только rectum),
-                # передаем один заведомо существующий орган, чтобы процесс не упал из-за отсутствия параметров,
-                # либо генерируем исключение с понятным описанием.
-                raise RuntimeError(
-                    "Ни один из выбранных органов не поддерживается текущей версией TotalSegmentator.\n"
-                    "Пожалуйста, выберите другие органы риска (например, мочевой пузырь или кости)."
-                )
-            
-        logger.info(f"Запуск внешнего процесса TotalSegmentator: {' '.join(cmd)}")
-        
-        # Скрываем черное окно консоли на Windows при запуске subprocess
-        startupinfo = None
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            
-        # Запуск процесса с перехватом stdout и stderr
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            startupinfo=startupinfo
-        )
-        
-        if register_process_cb:
-            register_process_cb(process)
-            
-        # Чтение вывода в реальном времени с поддержкой мгновенной отмены
-        while True:
-            if is_cancelled_cb and is_cancelled_cb():
-                if process.poll() is None:
-                    logger.info("Отмена: Принудительное завершение процесса TotalSegmentator...")
-                    process.kill()
-                raise RuntimeError("Операция отменена пользователем.")
-                
-            line = process.stdout.readline()
-            if not line and process.poll() is not None:
-                break
-            if line:
-                clean_line = line.strip()
-                if clean_line:
-                    logger.info(f"[TotalSegmentator]: {clean_line}")
-                    
-        return_code = process.wait()
-        if return_code != 0:
-            raise RuntimeError(f"Процесс TotalSegmentator завершился с кодом ошибки {return_code}")
-            
-        logger.info(f"Шаг 2 успешно завершен за {time.time() - step_start:.2f} сек.")
-
-        # ----------------------------------------------------------------------
-        # Постобработка: сборка виртуальных органов (например, цельных легких из долей)
-        # ----------------------------------------------------------------------
-        logger.info("--- Постобработка: Сборка цельных легких из долей ИИ ---")
-        try:
-            import nibabel as nib
-            import numpy as np
-            
-            # Наш маппинг виртуальных органов
-            POST_VIRTUAL_MAP = {
-                "lung_left": ["lung_upper_lobe_left", "lung_lower_lobe_left"],
-                "lung_right": ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"]
-            }
-            
-            for virtual_organ, parts in POST_VIRTUAL_MAP.items():
-                part_files = [segmentation_dir / f"{part}.nii.gz" for part in parts]
-                existing_part_files = [f for f in part_files if f.exists()]
-                
-                if existing_part_files:
-                    logger.info(f"Сборка цельного органа '{virtual_organ}' из долей: {[f.name for f in existing_part_files]}")
-                    # Загружаем первую маску как основу
-                    base_nii = nib.load(str(existing_part_files[0]))
-                    base_data = base_nii.get_fdata() > 0.5
-                    
-                    # Объединяем логическим ИЛИ со всеми остальными частями
-                    for part_file in existing_part_files[1:]:
-                        part_data = nib.load(str(part_file)).get_fdata() > 0.5
-                        base_data = base_data | part_data
-                        
-                    # Создаем новый NIfTI-файл на основе геометрии первого файла
-                    merged_nii = nib.Nifti1Image(base_data.astype(np.uint8), base_nii.affine, base_nii.header)
-                    merged_file_path = segmentation_dir / f"{virtual_organ}.nii.gz"
-                    nib.save(merged_nii, str(merged_file_path))
-                    logger.info(f"Цельный орган успешно собран и сохранен как: {merged_file_path.name}")
-                    
-                    # Удаляем исходные файлы частей, чтобы они не дублировались
-                    for part_file in existing_part_files:
-                        try:
-                            part_file.unlink()
-                        except Exception as e:
-                            logger.debug(f"Не удалось удалить файл части {part_file.name}: {e}")
-        except Exception as e:
-            logger.error(f"Не удалось завершить сборку виртуальных органов: {e}")
-
-        if is_cancelled_cb and is_cancelled_cb():
-            raise RuntimeError("Операция отменена пользователем.")
-
-        # ----------------------------------------------------------------------
-        # Шаг 3: Очистка временных файлов
-        # ----------------------------------------------------------------------
-        if step_callback:
-            step_callback("Шаг 3 из 5: Удаление временных файлов и очистка ОЗУ...")
-        logger.info("--- Шаг 3 из 5: Удаление временного NIfTI КТ и очистка ОЗУ ---")
-        step_start = time.time()
-        
-        if nifti_ct_path.exists():
-            nifti_ct_path.unlink()
-            
-        gc.collect()
-        logger.info(f"Шаг 3 успешно завершен за {time.time() - step_start:.2f} сек. Память очищена.")
-
-        if is_cancelled_cb and is_cancelled_cb():
-            raise RuntimeError("Операция отменена пользователем.")
-
-        # ----------------------------------------------------------------------
-        # Шаг 4: Сборка масок в DICOM RTSTRUCT
-        # ----------------------------------------------------------------------
-        if step_callback:
-            step_callback("Шаг 4 из 5: Сборка RTSTRUCT и привязка к геометрии DICOM...")
-        logger.info("--- Шаг 4 из 5: Сборка RTSTRUCT и привязка к геометрии DICOM ---")
-        
-        step_start = time.time()
-        
-        # Получаем список масок из папки сегментации
-        mask_files = list(segmentation_dir.glob("*.nii.gz"))
-        if not mask_files:
-            raise RuntimeError("Не найдено масок органов после сегментации.")
-            
-        detected_organs = sorted([f.name.replace(".nii.gz", "") for f in mask_files])
-        logger.info(f"Обнаружено сегментированных масок органов: {len(mask_files)}")
-        logger.info(f"Список определенных ИИ органов на КТ: {detected_organs}")
-        
-        # Инициализируем или загружаем существующий RTSTRUCT
-        existing_rois = []
-        rtstruct = None
-        
-        if merge_mode and existing_rtstruct_path:
-            rt_path = Path(existing_rtstruct_path)
-            if rt_path.exists():
-                try:
-                    logger.info(f"Загрузка существующего RTSTRUCT для слияния: {rt_path}")
-                    rtstruct = RTStructBuilder.create_from(
-                        dicom_series_path=str(dicom_dir),
-                        rt_struct_path=str(rt_path)
-                    )
-                    existing_rois = rtstruct.get_roi_names()
-                    logger.info(f"Существующие структуры в файле: {existing_rois}")
-                except Exception as e:
-                    logger.error(
-                        f"Не удалось загрузить RTSTRUCT '{rt_path}' для слияния: {e}. "
-                        f"Пайплайн автоматически переключен в режим создания НОВОГО файла во избежание потери результатов ИИ."
-                    )
-            else:
-                logger.error(
-                    f"Файл RTSTRUCT для слияния не найден на диске: '{rt_path}'. "
-                    f"Пайплайн автоматически переключен в режим создания НОВОГО файла во избежание потери результатов ИИ."
-                )
-
-        if rtstruct is None:
-            logger.info("Инициализация нового RTSTRUCT считыванием оригинальной геометрии DICOM серии...")
-            rtstruct = RTStructBuilder.create_new(dicom_series_path=str(dicom_dir))
-            existing_rtstruct_path = None
-        
-        added_count = 0
-        for mask_file in mask_files:
-            organ_name = mask_file.name.replace(".nii.gz", "")
-            
-            # Фильтруем по списку целевых органов
-            if target_organs and organ_name not in target_organs:
-                continue
-                
-            logger.info(f"Обработка органа: {organ_name}...")
-            
-            nii_mask = nib.load(str(mask_file))
-            mask_data = nii_mask.get_fdata() > 0.5
-            
-            # Транспонируем (X, Y, Z) к NumPy (Y, X, Z) [Rows, Cols, Slices]
-            mask_data_transposed = np.transpose(mask_data, (1, 0, 2))
-            mask_bool = mask_data_transposed.astype(bool)
-            
-            if not np.any(mask_bool):
-                logger.info(f"Пропуск пустого органа: {organ_name} (отсутствует в КТ объеме)")
-                continue
-                
-            color = ORGAN_COLORS.get(organ_name, [128, 128, 128])
-            pretty_name = organ_name.replace("_", " ").title()
-            
-            # Умное слияние с существующими контурами
-            if pretty_name in existing_rois:
-                pretty_name = f"{pretty_name} (AI)"
-                logger.warning(f"Орган '{organ_name}' уже размечен врачом. ИИ-контур добавлен как '{pretty_name}'")
-            
-            rtstruct.add_roi(
-                mask=mask_bool,
-                color=color,
-                name=pretty_name
-            )
-            added_count += 1
-            logger.info(f"Успешно добавлен ROI '{pretty_name}' (цвет: {color})")
-            
-        if added_count == 0:
-            raise RuntimeError("В RTSTRUCT не было добавлено ни одного OAR. Проверьте соответствие КТ-области выбранным органам.")
-            
-        if is_cancelled_cb and is_cancelled_cb():
-            raise RuntimeError("Операция отменена пользователем.")
-
-        # ----------------------------------------------------------------------
-        # Шаг 5: Сохранение итогового файла
-        # ----------------------------------------------------------------------
-        if step_callback:
-            step_callback("Шаг 5 из 5: Запись итогового DICOM RTSTRUCT...")
-        logger.info("--- Шаг 5 из 5: Запись итогового DICOM RTSTRUCT ---")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Очистка PatientID для безопасного имени файла
-        clean_patient_id = "".join([c for c in str(patient_id) if c.isalnum() or c in ("_", "-")]).strip()
-        if not clean_patient_id:
-            clean_patient_id = "Unknown"
-
-        if merge_mode and existing_rtstruct_path:
-            orig_name = Path(existing_rtstruct_path).parent.name if Path(existing_rtstruct_path).stem == "rtstruct" else Path(existing_rtstruct_path).stem
-            # Если имя rtstruct, лучше взять имя родительской папки для уникальности, иначе stem
-            if orig_name.lower() == "rtstruct":
-                orig_name = Path(existing_rtstruct_path).parent.name
-            rtstruct_filename = f"RTSTRUCT_{orig_name}_merged.dcm"
-        else:
-            rtstruct_filename = f"RTSTRUCT_{clean_patient_id}.dcm"
-
-        rtstruct_file_path = output_dir / rtstruct_filename
-        
-        rtstruct.save(str(rtstruct_file_path))
-        logger.info(f"Шаг 5 успешно завершен за {time.time() - step_start:.2f} сек.")
-        if merge_mode and existing_rtstruct_path:
-            logger.info("Слияние успешно завершено! Исходный файл структур во входной папке КТ не изменен.")
-            logger.info(f"Результат слияния успешно записан в выходную папку: {rtstruct_file_path}")
-        else:
-            logger.info(f"Итоговый файл RTSTRUCT успешно записан: {rtstruct_file_path}")
-        
-    except Exception as e:
-        logger.error(f"Произошел критический сбой во время выполнения пайплайна: {e}", exc_info=True)
-        logger.warning(f"ВНИМАНИЕ: Временная папка с данными сохранена для отладки: {temp_dir}")
-        raise e
-        
-    else:
-        logger.info("Очистка временных папок и файлов...")
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
-            
-    finally:
-        logger.info(f"Пайплайн завершен. Общее время работы: {time.time() - start_time:.2f} сек.")
-
-
-# ==============================================================================
-# Раздел графического интерфейса PyQt6
-# ==============================================================================
 
 if PYQT_AVAILABLE:
     class LogSignaler(QObject):
@@ -740,11 +81,11 @@ if PYQT_AVAILABLE:
                         if line.strip():
                             color = "#ecf0f1"
                             if "ERROR" in line or "Exception" in line or self.level == "ERROR":
-                                color = "#ff6b6b"  # Красный
+                                color = "#ff6b6b"
                             elif "WARNING" in line:
-                                color = "#f1c40f"  # Желтый
+                                color = "#f1c40f"
                             elif "Шаг" in line or "---" in line:
-                                color = "#007acc"  # Синий
+                                color = "#007acc"
                             self.signaler.log_signal.emit(line, color)
 
         def flush(self):
@@ -785,22 +126,30 @@ if PYQT_AVAILABLE:
 
         def __init__(
             self,
+            engine: ContourEngine,
             dicom_dir: str,
             output_dir: str,
             preset_name: str,
-            highres: bool,
+            precision_mode: str,
             selected_organs: List[str],
             merge_mode: bool,
-            existing_rtstruct_path: Optional[str]
+            existing_rtstruct_path: Optional[str],
+            use_gpu: bool,
+            remove_blobs: bool,
+            smoothing_sigma: float
         ):
             super().__init__()
+            self.engine = engine
             self.dicom_dir = dicom_dir
             self.output_dir = output_dir
             self.preset_name = preset_name
-            self.highres = highres
+            self.precision_mode = precision_mode
             self.selected_organs = selected_organs
             self.merge_mode = merge_mode
             self.existing_rtstruct_path = existing_rtstruct_path
+            self.use_gpu = use_gpu
+            self.remove_blobs = remove_blobs
+            self.smoothing_sigma = smoothing_sigma
             self.is_cancelled = False
             self.process = None
 
@@ -824,14 +173,17 @@ if PYQT_AVAILABLE:
                 def is_canc():
                     return self.is_cancelled
 
-                run_pipeline(
+                self.engine.run_pipeline(
                     dicom_dir_path=self.dicom_dir,
                     output_dir_path=self.output_dir,
                     preset_name=self.preset_name,
-                    highres=self.highres,
+                    precision_mode=self.precision_mode,
                     selected_organs=self.selected_organs,
                     merge_mode=self.merge_mode,
                     existing_rtstruct_path=self.existing_rtstruct_path,
+                    use_gpu=self.use_gpu,
+                    remove_blobs=self.remove_blobs,
+                    smoothing_sigma=self.smoothing_sigma,
                     step_callback=callback,
                     is_cancelled_cb=is_canc,
                     register_process_cb=reg_proc
@@ -955,7 +307,6 @@ if PYQT_AVAILABLE:
         color: #ffffff;
     }
 
-
     QComboBox {
         background-color: #2d2d2d;
         border: 1px solid #3c3c3c;
@@ -1005,6 +356,10 @@ if PYQT_AVAILABLE:
         color: #d0d0d0;
     }
 
+    QCheckBox::disabled {
+        color: #666666;
+    }
+
     QProgressBar {
         border: 1px solid #333333;
         border-radius: 4px;
@@ -1028,6 +383,49 @@ if PYQT_AVAILABLE:
         font-size: 12px;
         padding: 8px;
         color: #ecf0f1;
+    }
+
+    QTabWidget::pane {
+        border: 1px solid #333333;
+        border-radius: 6px;
+        background: #242424;
+        padding: 10px;
+    }
+
+    QTabBar::tab {
+        background: #1e1e1e;
+        border: 1px solid #333333;
+        padding: 8px 16px;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+        color: #a0a0a0;
+        font-weight: bold;
+    }
+
+    QTabBar::tab:selected {
+        background: #242424;
+        border-bottom-color: #242424;
+        color: #ffffff;
+    }
+
+    QTabBar::tab:hover {
+        background: #2b2b2b;
+    }
+
+    QGroupBox {
+        border: 1px solid #333333;
+        border-radius: 6px;
+        margin-top: 10px;
+        padding-top: 15px;
+        font-weight: bold;
+        color: #ffffff;
+    }
+
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        left: 10px;
+        padding: 0 5px;
     }
 
     QScrollBar:vertical {
@@ -1074,11 +472,14 @@ if PYQT_AVAILABLE:
         def __init__(self):
             super().__init__()
             self.setWindowTitle("AI Contour - Автооконтурирование КТ органов риска")
-            self.setMinimumSize(920, 720)
+            self.setMinimumSize(960, 760)
             self.existing_rtstruct_path = None
             self.is_updating_presets = False
             self.worker = None
             self.settings = QSettings("AIContourCorp", "AIContour")
+
+            # Инициализация вычислительного движка
+            self.engine = ContourEngine()
 
             # Настройка перенаправления логов в реальном времени
             self.log_signaler = LogSignaler()
@@ -1099,7 +500,7 @@ if PYQT_AVAILABLE:
             self.load_settings()
 
         def init_ui(self):
-            self.setStyleSheet(DARK_QSS)
+            self.setStyleSheet(self.DARK_QSS)
 
             # Главный виджет
             main_widget = QWidget()
@@ -1109,13 +510,8 @@ if PYQT_AVAILABLE:
             main_layout.setSpacing(10)
 
             # Определение GPU/CPU для подзаголовка
-            device_str = "CPU"
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    device_str = "CUDA GPU"
-            except Exception:
-                pass
+            gpu_available = self.engine.is_gpu_available()
+            device_str = "CUDA GPU доступна" if gpu_available else "Доступен только CPU"
 
             # Шапка
             header_widget = QWidget()
@@ -1126,10 +522,12 @@ if PYQT_AVAILABLE:
             title_layout.setSpacing(2)
             title = QLabel("AI Contour")
             title.setObjectName("titleLabel")
-            subtitle = QLabel(f"Автоматическое сегментирование органов риска на КТ (TotalSegmentator {device_str})")
-            subtitle.setObjectName("subtitleLabel")
+            self.subtitle_label = QLabel(f"Автоматическое сегментирование органов риска на КТ ({device_str})")
+            self.subtitle_label.setObjectName("subtitleLabel")
+            if gpu_available:
+                self.subtitle_label.setStyleSheet("color: #2ecc71;")
             title_layout.addWidget(title)
-            title_layout.addWidget(subtitle)
+            title_layout.addWidget(self.subtitle_label)
 
             btn_help = QPushButton("Справка и дисклеймер 📖")
             btn_help.setObjectName("btnHelp")
@@ -1145,19 +543,29 @@ if PYQT_AVAILABLE:
             splitter = QSplitter(Qt.Orientation.Horizontal)
             main_layout.addWidget(splitter, 1)
 
-            # --- ЛЕВАЯ КОЛОНКА (Настройки и параметры) ---
+            # --- ЛЕВАЯ КОЛОНКА (Вкладки настроек) ---
             left_card = QFrame()
             left_card.setObjectName("card")
-            left_card.setMinimumWidth(380)
-            left_card.setMaximumWidth(460)
+            left_card.setMinimumWidth(400)
+            left_card.setMaximumWidth(480)
             left_layout = QVBoxLayout(left_card)
-            left_layout.setSpacing(12)
+            left_layout.setContentsMargins(5, 5, 5, 5)
+
+            self.tab_widget = QTabWidget()
+            left_layout.addWidget(self.tab_widget)
+
+            # ------------------------------------------------------------------
+            # ВКЛАДКА 1: Выбор органов и снимков
+            # ------------------------------------------------------------------
+            tab1_widget = QWidget()
+            tab1_layout = QVBoxLayout(tab1_widget)
+            tab1_layout.setSpacing(10)
 
             # Выбор КТ DICOM
             input_label = QLabel("Папка с КТ-снимками DICOM:")
             input_label.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.input_edit = QLineEdit()
-            self.input_edit.setPlaceholderText("Выберите папку с DICOM файлами снимков...")
+            self.input_edit.setPlaceholderText("Выберите папку с DICOM файлами...")
             self.input_edit.textChanged.connect(self.check_for_rtstruct)
             btn_input = QPushButton("Обзор...")
             btn_input.setObjectName("btnBrowse")
@@ -1166,16 +574,14 @@ if PYQT_AVAILABLE:
             input_box = QHBoxLayout()
             input_box.addWidget(self.input_edit)
             input_box.addWidget(btn_input)
-            left_layout.addWidget(input_label)
-            left_layout.addLayout(input_box)
-
-            # Выбор директории вывода удален. Результаты сохраняются во входную папку.
+            tab1_layout.addWidget(input_label)
+            tab1_layout.addLayout(input_box)
 
             # Под-карточка статуса RTSTRUCT
             status_frame = QFrame()
             status_frame.setObjectName("statusCard")
             status_layout = QVBoxLayout(status_frame)
-            status_layout.setSpacing(8)
+            status_layout.setSpacing(6)
 
             status_title = QLabel("Работа с существующими контурами:")
             status_title.setStyleSheet("font-weight: bold; color: #b0b0b0;")
@@ -1183,8 +589,8 @@ if PYQT_AVAILABLE:
             self.status_rtstruct_label.setStyleSheet("color: #888888;")
             self.status_rtstruct_label.setWordWrap(True)
 
-            self.radio_merge = QRadioButton("Дописать ИИ-контуры в файл структур (Merge)")
-            self.radio_new = QRadioButton("Создать новый файл отдельно (Сохранить оригинал)")
+            self.radio_merge = QRadioButton("Дописать ИИ-контуры в RTSTRUCT (Merge)")
+            self.radio_new = QRadioButton("Создать новый файл RTSTRUCT")
             self.radio_merge.setEnabled(False)
             self.radio_new.setEnabled(False)
             self.radio_new.setChecked(True)
@@ -1197,94 +603,150 @@ if PYQT_AVAILABLE:
             status_layout.addWidget(self.status_rtstruct_label)
             status_layout.addWidget(self.radio_merge)
             status_layout.addWidget(self.radio_new)
-            left_layout.addWidget(status_frame)
+            tab1_layout.addWidget(status_frame)
 
             # Выбор пресета
             preset_label = QLabel("Выбор пресета органов (OAR):")
             preset_label.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.preset_combo = QComboBox()
-            self.preset_combo.addItems(list(PRESETS_MAP.keys()))
             self.preset_combo.currentTextChanged.connect(self.on_preset_changed)
+            tab1_layout.addWidget(preset_label)
+            tab1_layout.addWidget(self.preset_combo)
 
-            left_layout.addWidget(preset_label)
-            left_layout.addWidget(self.preset_combo)
-
-            # Кнопки быстрого выделения органов риска
+            # Кнопки быстрого выделения
             selection_layout = QHBoxLayout()
             btn_select_all = QPushButton("Выбрать все")
             btn_select_all.setObjectName("btnAction")
-            btn_select_all.setToolTip("Отметить абсолютно все органы риска во всех группах")
             btn_select_all.clicked.connect(self.select_all_organs)
             
             btn_deselect_all = QPushButton("Снять все")
             btn_deselect_all.setObjectName("btnAction")
-            btn_deselect_all.setToolTip("Снять выделение со всех органов риска")
             btn_deselect_all.clicked.connect(self.deselect_all_organs)
             
             selection_layout.addWidget(btn_select_all)
             selection_layout.addWidget(btn_deselect_all)
-            left_layout.addLayout(selection_layout)
+            tab1_layout.addLayout(selection_layout)
 
             # Список OAR с чек-боксами
             organs_header = QLabel("Органы для автооконтурирования:")
             organs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.organs_list = QListWidget()
             self.organs_list.itemChanged.connect(self.on_organ_item_changed)
+            self.organs_list.itemSelectionChanged.connect(self.on_organ_selection_changed)
 
-            # Заполнение списка с группировкой по анатомическим областям (по протоколам QUANTEC/TG-263)
-            ORGAN_GROUPS = {
-                "--- ГОЛОВА И ШЕЯ ---": [
-                    "brain", "spinal_cord", "thyroid_gland", "skull", "trachea", "esophagus",
-                    "common_carotid_artery_left", "common_carotid_artery_right"
-                ],
-                "--- ГРУДНАЯ КЛЕТКА ---": [
-                    "heart", "lung_left", "lung_right", "trachea", "esophagus", "aorta", "pulmonary_artery",
-                    "superior_vena_cava", "sternum", "clavicula_left", "clavicula_right"
-                ],
-                "--- БРЮШНАЯ ПОЛОСТЬ ---": [
-                    "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "inferior_vena_cava", "pancreas", "duodenum", "adrenal_gland_left", "adrenal_gland_right", "portal_vein_and_splenic_vein"
-                ],
-                "--- МАЛЫЙ ТАЗ ---": [
-                    "urinary_bladder", "prostate", "rectum", "colon", "small_bowel", "femur_left", "femur_right", "hip_left", "hip_right", "sacrum", "iliac_artery_left", "iliac_artery_right"
-                ]
-            }
+            tab1_layout.addWidget(organs_header)
+            tab1_layout.addWidget(self.organs_list)
+            self.tab_widget.addTab(tab1_widget, "🎯 Органы и снимки")
 
-            for group_title, organs in ORGAN_GROUPS.items():
-                # Элемент-заголовок группы
-                header_item = QListWidgetItem(group_title)
-                header_item.setFlags(Qt.ItemFlag.NoItemFlags)  # Невыбираемый, без чекбокса
-                header_item.setData(Qt.ItemDataRole.UserRole, "header")
+            # ------------------------------------------------------------------
+            # ВКЛАДКА 2: Параметры ИИ и Цвета
+            # ------------------------------------------------------------------
+            tab2_widget = QWidget()
+            tab2_layout = QVBoxLayout(tab2_widget)
+            tab2_layout.setSpacing(12)
+
+            # Группа 1: Вычислительное устройство
+            device_group = QGroupBox("Вычислительное устройство")
+            device_group_layout = QVBoxLayout(device_group)
+            self.radio_cpu = QRadioButton("Использовать CPU (Центральный процессор)")
+            self.radio_gpu = QRadioButton("Использовать GPU CUDA (Рекомендуется)")
+            
+            if gpu_available:
+                self.radio_gpu.setChecked(True)
+            else:
+                self.radio_gpu.setEnabled(False)
+                self.radio_gpu.setToolTip("CUDA-совместимая видеокарта не найдена или PyTorch не поддерживает её.")
+                self.radio_cpu.setChecked(True)
                 
-                # Стилизация заголовка
-                font = header_item.font()
-                font.setBold(True)
-                header_item.setFont(font)
-                header_item.setForeground(QBrush(QColor("#007acc")))  # Фирменный синий цвет
-                header_item.setBackground(QBrush(QColor("#242424")))  # Чуть светлее фона списка для контраста
-                
-                self.organs_list.addItem(header_item)
+            device_group_layout.addWidget(self.radio_gpu)
+            device_group_layout.addWidget(self.radio_cpu)
+            tab2_layout.addWidget(device_group)
 
-                # Добавление органов группы
-                for org in organs:
-                    ru_name = ORGAN_RU_NAMES.get(org, org)
-                    item = QListWidgetItem(f"   {ru_name}")  # Отступ для визуального выделения иерархии
-                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    item.setCheckState(Qt.CheckState.Unchecked)
-                    item.setData(Qt.ItemDataRole.UserRole, org)
-                    self.organs_list.addItem(item)
+            # Группа 2: Режимы точности TotalSegmentator
+            precision_group = QGroupBox("Точность и разрешение ИИ")
+            precision_group_layout = QVBoxLayout(precision_group)
+            
+            self.precision_combo = QComboBox()
+            self.precision_combo.addItems([
+                "Стандартная (1.5 мм разрешение, стандарт)",
+                "Быстрая (3.0 мм разрешение, быстро)",
+                "Ультра-быстрая (Body - поиск контура тела целиком)"
+            ])
+            self.precision_combo.setToolTip(
+                "Стандартная: высокое разрешение контуров (1.5 мм)\n"
+                "Быстрая: сниженное разрешение (3 мм), скорость выше в 3-4 раза\n"
+                "Ультра-быстрая: только для разметки внешнего контура тела целиком"
+            )
+            precision_group_layout.addWidget(self.precision_combo)
+            tab2_layout.addWidget(precision_group)
 
-            left_layout.addWidget(organs_header)
-            left_layout.addWidget(self.organs_list)
+            # Группа 3: 3D Постобработка масок
+            post_group = QGroupBox("Постобработка 3D масок")
+            post_group_layout = QVBoxLayout(post_group)
+            
+            self.clean_blobs_check = QCheckBox("Remove small blobs (Удалять мелкие артефакты)")
+            self.clean_blobs_check.setToolTip(
+                "Удаляет изолированный мелкий шум нейросети на КТ-срезах,\n"
+                "оставляя только основной объем органа."
+            )
+            self.clean_blobs_check.setChecked(True)
+            
+            self.smoothing_check = QCheckBox("Smoothing (Сглаживание контуров)")
+            self.smoothing_check.setToolTip(
+                "Применяет Гауссову фильтрацию к 3D-маске, убирая «ступенчатость» срезов."
+            )
+            self.smoothing_check.stateChanged.connect(self.on_smoothing_check_changed)
+            
+            smoothing_param_layout = QHBoxLayout()
+            smoothing_param_label = QLabel("Уровень сглаживания:")
+            self.smoothing_combo = QComboBox()
+            self.smoothing_combo.addItems([
+                "Легкое (sigma = 0.5)",
+                "Стандартное (sigma = 1.0)",
+                "Сильное (sigma = 1.5)",
+                "Максимальное (sigma = 2.0)"
+            ])
+            self.smoothing_combo.setCurrentIndex(1)
+            self.smoothing_combo.setEnabled(False)
+            
+            smoothing_param_layout.addWidget(smoothing_param_label)
+            smoothing_param_layout.addWidget(self.smoothing_combo)
+            
+            post_group_layout.addWidget(self.clean_blobs_check)
+            post_group_layout.addWidget(self.smoothing_check)
+            post_group_layout.addLayout(smoothing_param_layout)
+            tab2_layout.addWidget(post_group)
 
-            # Точность
-            self.highres_check = QCheckBox("Повышенная точность (1.5 мм, медленный расчет на CPU)")
-            self.highres_check.setToolTip("Использует высокое разрешение КТ. Занимает значительно больше времени и ОЗУ.")
-            left_layout.addWidget(self.highres_check)
+            # Группа 4: Кастомизация цветов
+            color_group = QGroupBox("Управление цветами ROI")
+            color_group_layout = QVBoxLayout(color_group)
+            
+            color_preset_label = QLabel("Предопределенный набор цветов:")
+            self.color_preset_combo = QComboBox()
+            self.color_preset_combo.addItems([
+                "Классический AI Contour",
+                "Клинический QUANTEC",
+                "Яркий неоновый"
+            ])
+            self.color_preset_combo.currentTextChanged.connect(self.on_color_preset_changed)
+            
+            self.btn_color_pick = QPushButton("🎨 Выбрать индивидуальный цвет органа...")
+            self.btn_color_pick.setObjectName("btnAction")
+            self.btn_color_pick.setEnabled(False)
+            self.btn_color_pick.clicked.connect(self.pick_organ_color)
+            
+            color_group_layout.addWidget(color_preset_label)
+            color_group_layout.addWidget(self.color_preset_combo)
+            color_group_layout.addWidget(self.btn_color_pick)
+            tab2_layout.addWidget(color_group)
 
-            # Чекбокс звукового оповещения
+            # Звук в конце
             self.sound_check = QCheckBox("Звуковое оповещение при завершении 🔔")
-            self.sound_check.setToolTip("Воспроизводить приятный звуковой сигнал после окончания сегментации.")
-            left_layout.addWidget(self.sound_check)
+            self.sound_check.setChecked(True)
+            tab2_layout.addWidget(self.sound_check)
+            tab2_layout.addStretch()
+
+            self.tab_widget.addTab(tab2_widget, "⚙️ Параметры ИИ & Цвета")
 
             splitter.addWidget(left_card)
 
@@ -1294,7 +756,7 @@ if PYQT_AVAILABLE:
             right_layout = QVBoxLayout(right_card)
             right_layout.setSpacing(12)
 
-            logs_header = QLabel("Лог выполнения работы ИИ в реальном времени:")
+            logs_header = QLabel("Лог выполнения работы движка в реальном времени:")
             logs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.log_edit = QTextEdit()
             self.log_edit.setReadOnly(True)
@@ -1325,14 +787,85 @@ if PYQT_AVAILABLE:
             splitter.setStretchFactor(0, 0)
             splitter.setStretchFactor(1, 1)
 
-            # Подключаем сохранение настроек при смене флага точности и звука
-            self.highres_check.stateChanged.connect(self.save_settings)
+            # Инициализация списков пресетов и органов из presets.json движка
+            self.init_presets_and_organs()
+
+            # Подключаем сохранение настроек
             self.sound_check.stateChanged.connect(self.save_settings)
-            splitter.setSizes([400, 520])
+            self.clean_blobs_check.stateChanged.connect(self.save_settings)
+            self.smoothing_check.stateChanged.connect(self.save_settings)
+            self.precision_combo.currentIndexChanged.connect(self.save_settings)
+            self.smoothing_combo.currentIndexChanged.connect(self.save_settings)
+            self.color_preset_combo.currentIndexChanged.connect(self.save_settings)
+            
+            splitter.setSizes([430, 490])
+
+        def init_presets_and_organs(self):
+            """Инициализирует комбобокс пресетов и список органов из presets.json."""
+            self.is_updating_presets = True
+            self.preset_combo.clear()
+            self.organs_list.clear()
+
+            # Добавляем пресеты из движка
+            presets_keys = list(self.engine.presets.keys())
+            self.preset_combo.addItems(presets_keys)
+            self.preset_combo.addItem("Все органы (All)")
+            self.preset_combo.addItem("Пользовательский (Custom)")
+
+            # Группировка списка органов по анатомическим областям
+            ORGAN_GROUPS = {
+                "--- ГОЛОВА И ШЕЯ ---": [
+                    "brain", "spinal_cord", "thyroid_gland", "skull", "trachea", "esophagus",
+                    "common_carotid_artery_left", "common_carotid_artery_right"
+                ],
+                "--- ГРУДНАЯ КЛЕТКА ---": [
+                    "heart", "lung_left", "lung_right", "trachea", "esophagus", "aorta", "pulmonary_artery",
+                    "superior_vena_cava", "sternum", "clavicula_left", "clavicula_right"
+                ],
+                "--- БРЮШНАЯ ПОЛОСТЬ ---": [
+                    "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "inferior_vena_cava", "pancreas", "duodenum", "adrenal_gland_left", "adrenal_gland_right", "portal_vein_and_splenic_vein"
+                ],
+                "--- МАЛЫЙ ТАЗ ---": [
+                    "urinary_bladder", "prostate", "rectum", "colon", "small_bowel", "femur_left", "femur_right", "hip_left", "hip_right", "sacrum", "iliac_artery_left", "iliac_artery_right"
+                ]
+            }
+
+            for group_title, organs in ORGAN_GROUPS.items():
+                header_item = QListWidgetItem(group_title)
+                header_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                header_item.setData(Qt.ItemDataRole.UserRole, "header")
+                
+                font = header_item.font()
+                font.setBold(True)
+                header_item.setFont(font)
+                header_item.setForeground(QBrush(QColor("#007acc")))
+                header_item.setBackground(QBrush(QColor("#242424")))
+                self.organs_list.addItem(header_item)
+
+                for org in organs:
+                    # Проверяем, есть ли такой орган в ru_names
+                    ru_name = self.engine.ru_names.get(org, org)
+                    item = QListWidgetItem(f"   {ru_name}")
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    item.setCheckState(Qt.CheckState.Unchecked)
+                    item.setData(Qt.ItemDataRole.UserRole, org)
+                    
+                    # Установка цветного квадратика-иконки для OAR
+                    self.update_item_color_icon(item, org)
+                    
+                    self.organs_list.addItem(item)
+
+            self.is_updating_presets = False
+
+        def update_item_color_icon(self, item: QListWidgetItem, organ_name: str):
+            """Генерирует и устанавливает цветную иконку для органа в списке."""
+            pixmap = QPixmap(14, 14)
+            color_rgb = self.engine.colors.get(organ_name, [128, 128, 128])
+            pixmap.fill(QColor(color_rgb[0], color_rgb[1], color_rgb[2]))
+            item.setIcon(QIcon(pixmap))
 
         def load_settings(self):
             """Загружает сохраненное состояние интерфейса."""
-            # Блокируем сигналы, чтобы избежать автовызовов и лишних циклов обновлений при инициализации
             self.preset_combo.blockSignals(True)
             self.organs_list.blockSignals(True)
             self.is_updating_presets = True
@@ -1343,25 +876,41 @@ if PYQT_AVAILABLE:
                     self.input_edit.setText(input_dir)
                 self.last_alternative_output_dir = self.settings.value("alternative_output_dir", "")
                 
-                # Загружаем пресет
                 preset = self.settings.value("preset", "Брюшная полость (Abdomen)")
                 self.preset_combo.setCurrentText(preset)
                 
-                # Загружаем точность
-                highres = self.settings.value("highres", False, type=bool)
-                self.highres_check.setChecked(highres)
+                # Доп параметры постобработки и точности
+                precision_idx = self.settings.value("precision_mode", 0, type=int)
+                self.precision_combo.setCurrentIndex(precision_idx)
                 
-                # Загружаем настройку звука
+                clean_blobs = self.settings.value("clean_blobs", True, type=bool)
+                self.clean_blobs_check.setChecked(clean_blobs)
+                
+                smoothing = self.settings.value("smoothing", False, type=bool)
+                self.smoothing_check.setChecked(smoothing)
+                self.smoothing_combo.setEnabled(smoothing)
+                
+                smoothing_idx = self.settings.value("smoothing_idx", 1, type=int)
+                self.smoothing_combo.setCurrentIndex(smoothing_idx)
+                
+                color_preset = self.settings.value("color_preset", "Классический AI Contour")
+                self.color_preset_combo.setCurrentText(color_preset)
+
                 play_sound = self.settings.value("play_sound", True, type=bool)
                 self.sound_check.setChecked(play_sound)
                 
-                # Загружаем отмеченные органы
-                checked_organs = self.settings.value("checked_organs", None)
+                # Загружаем выбранные ресурсы
+                use_gpu = self.settings.value("use_gpu", True, type=bool)
+                if self.radio_gpu.isEnabled():
+                    self.radio_gpu.setChecked(use_gpu)
+                    self.radio_cpu.setChecked(not use_gpu)
+                else:
+                    self.radio_cpu.setChecked(True)
                 
+                checked_organs = self.settings.value("checked_organs", None)
                 if checked_organs is not None:
-                    # Если есть сохраненный список органов
                     if not isinstance(checked_organs, list):
-                        checked_organs = [checked_organs] # На случай, если QSettings вернул одиночную строку
+                        checked_organs = [checked_organs]
                     
                     for i in range(self.organs_list.count()):
                         item = self.organs_list.item(i)
@@ -1373,32 +922,26 @@ if PYQT_AVAILABLE:
                         else:
                             item.setCheckState(Qt.CheckState.Unchecked)
                 else:
-                    # Если это первый запуск, отмечаем структуры по пресету по умолчанию
-                    target_organs = PRESETS_MAP.get(preset, [])
-                    for i in range(self.organs_list.count()):
-                        item = self.organs_list.item(i)
-                        organ_name = item.data(Qt.ItemDataRole.UserRole)
-                        if organ_name == "header":
-                            continue
-                        if organ_name in target_organs:
-                            item.setCheckState(Qt.CheckState.Checked)
-                        else:
-                            item.setCheckState(Qt.CheckState.Unchecked)
+                    self.apply_preset_checked_states(preset)
             finally:
                 self.is_updating_presets = False
                 self.organs_list.blockSignals(False)
                 self.preset_combo.blockSignals(False)
 
         def save_settings(self):
-            """Сохраняет состояние интерфейса в реестр / конфиг."""
+            """Сохраняет состояние интерфейса в QSettings."""
             self.settings.setValue("input_dir", self.input_edit.text().strip())
             if hasattr(self, "last_alternative_output_dir") and self.last_alternative_output_dir:
                 self.settings.setValue("alternative_output_dir", self.last_alternative_output_dir)
             self.settings.setValue("preset", self.preset_combo.currentText())
-            self.settings.setValue("highres", self.highres_check.isChecked())
+            self.settings.setValue("precision_mode", self.precision_combo.currentIndex())
+            self.settings.setValue("clean_blobs", self.clean_blobs_check.isChecked())
+            self.settings.setValue("smoothing", self.smoothing_check.isChecked())
+            self.settings.setValue("smoothing_idx", self.smoothing_combo.currentIndex())
+            self.settings.setValue("color_preset", self.color_preset_combo.currentText())
             self.settings.setValue("play_sound", self.sound_check.isChecked())
+            self.settings.setValue("use_gpu", self.radio_gpu.isChecked())
             
-            # Собираем список всех выбранных органов
             checked_organs = []
             for i in range(self.organs_list.count()):
                 item = self.organs_list.item(i)
@@ -1439,7 +982,6 @@ if PYQT_AVAILABLE:
                     filepath = os.path.join(directory, filename)
                     if os.path.isfile(filepath):
                         try:
-                            # Проверяем DICOM-заголовок без чтения пикселей
                             ds = pydicom.dcmread(filepath, stop_before_pixels=True)
                             if getattr(ds, "Modality", None) == "RTSTRUCT":
                                 found_file = filepath
@@ -1480,7 +1022,6 @@ if PYQT_AVAILABLE:
                 item.setCheckState(Qt.CheckState.Checked)
             self.is_updating_presets = False
             
-            # Обновляем комбобокс пресетов
             self.preset_combo.blockSignals(True)
             self.preset_combo.setCurrentText("Все органы (All)")
             self.preset_combo.blockSignals(False)
@@ -1498,21 +1039,22 @@ if PYQT_AVAILABLE:
                 item.setCheckState(Qt.CheckState.Unchecked)
             self.is_updating_presets = False
             
-            # Обновляем комбобокс пресетов
             self.preset_combo.blockSignals(True)
             self.preset_combo.setCurrentText("Пользовательский (Custom)")
             self.preset_combo.blockSignals(False)
             
             self.save_settings()
 
-        def on_preset_changed(self, text: str):
-            """Слот изменения выбранного пресета."""
-            if text == "Пользовательский (Custom)":
+        def apply_preset_checked_states(self, preset_name: str):
+            """Снимает/ставит галочки в списке в соответствии с выбранным пресетом."""
+            if preset_name == "Пользовательский (Custom)":
                 return
-                
-            self.is_updating_presets = True
-            target_organs = PRESETS_MAP.get(text, [])
-            
+
+            if preset_name == "Все органы (All)":
+                target_organs = list(self.engine.ru_names.keys())
+            else:
+                target_organs = self.engine.presets.get(preset_name, [])
+
             for i in range(self.organs_list.count()):
                 item = self.organs_list.item(i)
                 organ_name = item.data(Qt.ItemDataRole.UserRole)
@@ -1522,7 +1064,11 @@ if PYQT_AVAILABLE:
                     item.setCheckState(Qt.CheckState.Checked)
                 else:
                     item.setCheckState(Qt.CheckState.Unchecked)
-                    
+
+        def on_preset_changed(self, text: str):
+            """Слот изменения выбранного пресета."""
+            self.is_updating_presets = True
+            self.apply_preset_checked_states(text)
             self.is_updating_presets = False
             self.save_settings()
 
@@ -1536,15 +1082,16 @@ if PYQT_AVAILABLE:
                 return
                 
             self.is_updating_presets = True
-            # Синхронизируем состояние чекбоксов для одинаковых органов в других анатомических группах
             state = item.checkState()
+            
+            # Синхронизация состояния одинаковых органов в списке (если есть дубли)
             for i in range(self.organs_list.count()):
                 itm = self.organs_list.item(i)
                 if itm != item and itm.data(Qt.ItemDataRole.UserRole) == organ_name:
                     itm.setCheckState(state)
             self.is_updating_presets = False
                 
-            # Собираем все выбранные органы (только уникальные)
+            # Проверяем соответствие пресетам
             checked_organs = []
             for i in range(self.organs_list.count()):
                 itm = self.organs_list.item(i)
@@ -1555,20 +1102,112 @@ if PYQT_AVAILABLE:
                     if org not in checked_organs:
                         checked_organs.append(org)
                     
-            # Проверяем на соответствие пресетам
             matched_preset = "Пользовательский (Custom)"
-            for preset_name, preset_organs in PRESETS_MAP.items():
-                if preset_name == "Пользовательский (Custom)":
-                    continue
-                if set(checked_organs) == set(preset_organs):
-                    matched_preset = preset_name
-                    break
+            
+            # Проверяем "Все"
+            all_orgs = list(self.engine.ru_names.keys())
+            if set(checked_organs) == set(all_orgs):
+                matched_preset = "Все органы (All)"
+            else:
+                for preset_name, preset_organs in self.engine.presets.items():
+                    if set(checked_organs) == set(preset_organs):
+                        matched_preset = preset_name
+                        break
                     
-            # Блокируем сигналы комбобокса на время смены названия
             self.preset_combo.blockSignals(True)
             self.preset_combo.setCurrentText(matched_preset)
             self.preset_combo.blockSignals(False)
             self.save_settings()
+
+        def on_organ_selection_changed(self):
+            """Слот изменения выделенной строки в списке."""
+            selected = self.organs_list.selectedItems()
+            if not selected:
+                self.btn_color_pick.setEnabled(False)
+                return
+            
+            organ_name = selected[0].data(Qt.ItemDataRole.UserRole)
+            if organ_name == "header":
+                self.btn_color_pick.setEnabled(False)
+            else:
+                self.btn_color_pick.setEnabled(True)
+
+        def pick_organ_color(self):
+            """Открывает диалог выбора цвета для выделенного органа."""
+            selected = self.organs_list.selectedItems()
+            if not selected:
+                return
+            
+            item = selected[0]
+            organ_name = item.data(Qt.ItemDataRole.UserRole)
+            if organ_name == "header":
+                return
+            
+            current_rgb = self.engine.colors.get(organ_name, [128, 128, 128])
+            initial_color = QColor(current_rgb[0], current_rgb[1], current_rgb[2])
+            
+            ru_name = self.engine.ru_names.get(organ_name, organ_name)
+            new_color = QColorDialog.getColor(initial_color, self, f"Выберите цвет для: {ru_name}")
+            
+            if new_color.isValid():
+                new_rgb = [new_color.red(), new_color.green(), new_color.blue()]
+                self.engine.colors[organ_name] = new_rgb
+                self.engine.save_presets_config()
+                
+                # Обновляем иконку
+                self.update_item_color_icon(item, organ_name)
+                
+                # Обновляем все вхождения этого органа в списке (если сдублировано)
+                for i in range(self.organs_list.count()):
+                    itm = self.organs_list.item(i)
+                    if itm.data(Qt.ItemDataRole.UserRole) == organ_name:
+                        self.update_item_color_icon(itm, organ_name)
+                        
+                logger.info(f"Цвет органа {organ_name} успешно изменен на {new_rgb}")
+
+        def on_color_preset_changed(self, text: str):
+            """Слот изменения цветового пресета."""
+            # Наборы пресетов
+            preset_palettes = {
+                "Классический AI Contour": {
+                    "spleen": [156, 39, 176], "kidney_right": [3, 169, 244], "kidney_left": [33, 150, 243],
+                    "gallbladder": [76, 175, 80], "liver": [139, 195, 74], "stomach": [255, 152, 0],
+                    "urinary_bladder": [255, 235, 59], "heart": [233, 30, 99], "rectum": [121, 85, 72]
+                },
+                "Клинический QUANTEC": {
+                    "spleen": [160, 32, 240], "kidney_right": [0, 0, 255], "kidney_left": [30, 144, 255],
+                    "gallbladder": [0, 255, 0], "liver": [34, 139, 34], "stomach": [218, 165, 32],
+                    "urinary_bladder": [255, 215, 0], "heart": [255, 0, 0], "rectum": [139, 69, 19]
+                },
+                "Яркий неоновый": {
+                    "spleen": [255, 0, 255], "kidney_right": [0, 255, 255], "kidney_left": [0, 191, 255],
+                    "gallbladder": [50, 205, 50], "liver": [173, 255, 47], "stomach": [255, 165, 0],
+                    "urinary_bladder": [255, 255, 0], "heart": [255, 20, 147], "rectum": [210, 105, 30]
+                }
+            }
+
+            palette = preset_palettes.get(text)
+            if palette:
+                for organ, color in palette.items():
+                    if organ in self.engine.colors:
+                        self.engine.colors[organ] = color
+                
+                # Сохраняем в presets.json
+                self.engine.save_presets_config()
+                
+                # Обновляем все иконки в списке
+                for i in range(self.organs_list.count()):
+                    itm = self.organs_list.item(i)
+                    org = itm.data(Qt.ItemDataRole.UserRole)
+                    if org != "header":
+                        self.update_item_color_icon(itm, org)
+                
+                logger.info(f"Цветовая гамма переключена на пресет: '{text}'")
+
+        def on_smoothing_check_changed(self, state: int):
+            """Слот изменения состояния чекбокса сглаживания."""
+            enabled = (state == 2)
+            self.smoothing_combo.setEnabled(enabled)
 
         def append_log(self, message: str, color: str):
             """Потокобезопасное добавление логов в текстовое окно."""
@@ -1576,9 +1215,8 @@ if PYQT_AVAILABLE:
             self.log_edit.moveCursor(QTextCursor.MoveOperation.End)
 
         def start_segmentation(self):
-            """Запускает процесс сегментации или отменяет его, если он уже запущен."""
+            """Запускает процесс сегментации или отменяет его."""
             if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
-                # Запрашиваем подтверждение отмены
                 reply = QMessageBox.question(
                     self, 
                     "Подтверждение отмены", 
@@ -1597,7 +1235,7 @@ if PYQT_AVAILABLE:
                 QMessageBox.critical(self, "Ошибка", "Укажите корректный путь к папке с КТ DICOM снимками!")
                 return
                 
-            # Проверяем доступность папки DICOM на запись (поддержка read-only/сетевых дисков)
+            # Проверяем доступность папки DICOM на запись (поддержка read-only)
             test_file_path = os.path.join(dicom_dir, f".write_test_{int(time.time())}")
             is_writable = False
             try:
@@ -1613,22 +1251,16 @@ if PYQT_AVAILABLE:
                 QMessageBox.warning(
                     self,
                     "Папка защищена от записи ⚠️",
-                    "Выбранная папка с КТ-снимками защищена от записи (например, находится на сетевом диске только для чтения или CD).\n\n"
-                    "Пожалуйста, выберите альтернативную локальную папку для сохранения готовых RTSTRUCT файлов."
+                    "Выбранная папка защищена от записи (например, сетевой диск только для чтения).\n\n"
+                    "Пожалуйста, выберите альтернативную папку для сохранения готовых RTSTRUCT файлов."
                 )
                 
                 default_alt = getattr(self, "last_alternative_output_dir", "")
                 if not default_alt or not os.path.isdir(default_alt):
                     default_alt = str(Path.home())
                     
-                alt_dir = QFileDialog.getExistingDirectory(
-                    self, 
-                    "Выберите папку для сохранения результатов",
-                    default_alt
-                )
-                
+                alt_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для сохранения", default_alt)
                 if not alt_dir:
-                    # Отмена запуска
                     return
                 
                 output_dir = alt_dir
@@ -1650,18 +1282,15 @@ if PYQT_AVAILABLE:
                 return
                 
             merge_mode = self.radio_merge.isChecked()
-            
-            # Быстрая валидация существования файла RTSTRUCT при слиянии
             if merge_mode:
                 if not self.existing_rtstruct_path or not os.path.exists(self.existing_rtstruct_path):
                     QMessageBox.critical(
                         self, 
                         "Ошибка слияния", 
-                        "Выбран режим слияния с существующим RTSTRUCT, но файл разметки не найден по указанному пути!\n\n"
-                        "Возможно, он был перемещен или удален. Укажите папку с КТ заново или выберите режим создания нового файла."
+                        "Выбран режим слияния, но файл RTSTRUCT не найден по указанному пути!\n\n"
+                        "Укажите папку с КТ заново."
                     )
-                    # Сбрасываем статус и радиокнопки
-                    self.status_rtstruct_label.setText("Файл RTSTRUCT отсутствует на диске!")
+                    self.status_rtstruct_label.setText("Файл RTSTRUCT отсутствует!")
                     self.status_rtstruct_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
                     self.radio_merge.setEnabled(False)
                     self.radio_new.setEnabled(False)
@@ -1672,8 +1301,8 @@ if PYQT_AVAILABLE:
             self.set_ui_enabled(False)
             self.log_edit.clear()
             self.progress_bar.setValue(0)
-            preset_name = self.preset_combo.currentText()
             
+            preset_name = self.preset_combo.currentText()
             preset_key = "abdominal_oar"
             if "Thorax" in preset_name or "Грудная" in preset_name:
                 preset_key = "thoracic_oar"
@@ -1681,23 +1310,36 @@ if PYQT_AVAILABLE:
                 preset_key = "pelvis_oar"
             elif "Head & Neck" in preset_name or "Голова" in preset_name:
                 preset_key = "head_neck_oar"
+            elif "Brachytherapy" in preset_name or "Брахитерапия" in preset_name:
+                preset_key = "brachytherapy_oar"
             else:
                 preset_key = "all"
-                
-            # Создаем и запускаем вычислительный поток
+
+            # Точность
+            precision_modes = ["normal", "fast", "faster"]
+            precision_mode = precision_modes[self.precision_combo.currentIndex()]
+
+            # Сглаживание
+            smoothing_sigmas = [0.5, 1.0, 1.5, 2.0]
+            smoothing_sigma = smoothing_sigmas[self.smoothing_combo.currentIndex()] if self.smoothing_check.isChecked() else 0.0
+
+            # Создаем и запускаем поток вычислений
             self.worker = SegmentationWorker(
+                engine=self.engine,
                 dicom_dir=dicom_dir,
                 output_dir=output_dir,
                 preset_name=preset_key,
-                highres=self.highres_check.isChecked(),
+                precision_mode=precision_mode,
                 selected_organs=selected_organs,
                 merge_mode=merge_mode,
-                existing_rtstruct_path=self.existing_rtstruct_path
+                existing_rtstruct_path=self.existing_rtstruct_path,
+                use_gpu=self.radio_gpu.isChecked(),
+                remove_blobs=self.clean_blobs_check.isChecked(),
+                smoothing_sigma=smoothing_sigma
             )
             self.worker.finished_signal.connect(self.on_segmentation_finished)
             self.worker.step_signal.connect(self.on_step_changed)
             
-            # Запуск анимации активности
             self.current_step_base_text = "Подготовка пайплайна..."
             self.spinner_index = 0
             self.pulse_tick = 0
@@ -1709,16 +1351,27 @@ if PYQT_AVAILABLE:
             self.input_edit.setEnabled(enabled)
             self.preset_combo.setEnabled(enabled)
             self.organs_list.setEnabled(enabled)
-            self.highres_check.setEnabled(enabled)
+            self.precision_combo.setEnabled(enabled)
+            self.clean_blobs_check.setEnabled(enabled)
+            self.smoothing_check.setEnabled(enabled)
+            if enabled:
+                self.smoothing_combo.setEnabled(self.smoothing_check.isChecked())
+            else:
+                self.smoothing_combo.setEnabled(False)
+                
+            self.color_preset_combo.setEnabled(enabled)
             self.sound_check.setEnabled(enabled)
+            self.radio_cpu.setEnabled(enabled)
+            if self.engine.is_gpu_available():
+                self.radio_gpu.setEnabled(enabled)
+                
             self.radio_merge.setEnabled(enabled if self.existing_rtstruct_path else False)
             self.radio_new.setEnabled(enabled if self.existing_rtstruct_path else False)
             
-            # Кнопка запуска/отмены ВСЕГДА активна для возможности прерывания
             self.btn_run.setEnabled(True)
             if enabled:
                 self.btn_run.setText("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ")
-                self.btn_run.setStyleSheet("")  # Сброс к базовому стилю QSS
+                self.btn_run.setStyleSheet("")
             else:
                 self.btn_run.setText("ОТМЕНИТЬ РАСЧЕТ ❌")
                 self.btn_run.setStyleSheet(
@@ -1726,16 +1379,12 @@ if PYQT_AVAILABLE:
                 )
 
         def update_activity_animation(self):
-            """Обновляет анимацию вращения спиннера и плавного пульсирования цвета."""
             self.spinner_index = (self.spinner_index + 1) % len(self.SPINNER_FRAMES)
             spinner_char = self.SPINNER_FRAMES[self.spinner_index]
             self.status_step_label.setText(f"{self.current_step_base_text} {spinner_char}")
             
-            # Анимация плавного пульсирования цвета (синусоида)
             self.pulse_tick += 1
             factor = (math.sin(self.pulse_tick * 0.15) + 1.0) / 2.0
-            
-            # Интерполируем между #007acc (rgb 0, 122, 204) и #00e5ff (rgb 0, 229, 255)
             g = int(122 + (229 - 122) * factor)
             b = int(204 + (255 - 204) * factor)
             
@@ -1746,12 +1395,9 @@ if PYQT_AVAILABLE:
         def on_segmentation_finished(self, success: bool, message: str):
             self.set_ui_enabled(True)
             self.progress_bar.setRange(0, 100)
-            
-            # Останавливаем анимацию активности и сбрасываем стиль на статичный приятный синий
             self.activity_timer.stop()
             self.status_step_label.setStyleSheet("color: #007acc; font-weight: bold; font-style: italic;")
             
-            # Воспроизведение звука при включенной опции
             if self.sound_check.isChecked():
                 try:
                     import winsound
@@ -1771,17 +1417,15 @@ if PYQT_AVAILABLE:
                 if "отменена пользователем" in message.lower() or "отменен пользователем" in message.lower():
                     self.status_step_label.setText("Текущий шаг: Расчет отменен!")
                     self.status_step_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
-                    QMessageBox.warning(self, "Предупреждение", "Процесс автоматического оконтурирования был прерван пользователем.")
+                    QMessageBox.warning(self, "Предупреждение", "Процесс оконтурирования был прерван.")
                 else:
-                    self.status_step_label.setText("Текущий шаг: Ошибка во время расчетов!")
+                    self.status_step_label.setText("Текущий шаг: Ошибка!")
                     QMessageBox.critical(self, "Критическая ошибка", f"Произошел сбой при сегментации:\n{message}")
 
         def on_step_changed(self, step_text: str):
-            """Слот изменения текущего текстового шага пайплайна."""
             self.current_step_base_text = step_text
             self.status_step_label.setText(f"{step_text} {self.SPINNER_FRAMES[self.spinner_index]}")
             
-            # Динамическое обновление процентов на основе шагов пайплайна
             if "Шаг 1" in step_text:
                 self.progress_bar.setValue(10)
             elif "Шаг 2" in step_text:
@@ -1794,18 +1438,15 @@ if PYQT_AVAILABLE:
                 self.progress_bar.setValue(95)
 
         def show_help(self):
-            """Открывает диалоговое окно со справкой и дисклеймером."""
             dialog = QDialog(self)
             dialog.setWindowTitle("Справка и медицинский дисклеймер")
             dialog.setMinimumSize(640, 560)
             dialog.setStyleSheet(self.styleSheet())
             
-            # Вертикальный макет для диалога
             layout = QVBoxLayout(dialog)
             layout.setContentsMargins(15, 15, 15, 15)
             layout.setSpacing(12)
             
-            # QTextBrowser для рендеринга HTML справки
             browser = QTextBrowser()
             browser.setOpenExternalLinks(True)
             
@@ -1878,20 +1519,11 @@ if PYQT_AVAILABLE:
     <div class="card">
         <h2>Основные возможности 🚀</h2>
         <ul>
-            <li><b>41 орган риска (OAR):</b> Сегментация широкого перечня структур по международным протоколам (QUANTEC, TG-263), включая структуры головы и шеи, грудной клетки, брюшной полости и малого таза.</li>
-            <li><b>Интеллектуальное GPU-ускорение:</b> Программа автоматически определяет наличие графического ускорителя Nvidia с поддержкой CUDA. На GPU сегментация занимает всего <span class="highlight">15–20 секунд</span> (вместо 5–10 минут на CPU). При отсутствии GPU безопасно используется CPU-режим.</li>
-            <li><b>Анатомические пресеты:</b> Возможность мгновенного выбора органов по группам (Голова и Шея, Грудная клетка, Брюшная полость, Малый таз, Все органы) или гибкой ручной настройки (Пользовательский).</li>
-            <li><b>Умное объединение (Merge):</b> Программа может записать сгенерированные ИИ-контуры прямо в существующий файл разметки (RTSTRUCT) без удаления или повреждения его собственных контуров, либо сохранить результаты в новый файл.</li>
-            <li><b>Полное сохранение состояния:</b> Все выбранные чекбоксы, пресеты, пути к папкам и настройки точности автоматически сохраняются и восстанавливаются при следующем запуске.</li>
-        </ul>
-    </div>
-
-    <div class="card">
-        <h2>Технические ограничения ⚠️</h2>
-        <ul>
-            <li><b>Требования к КТ-снимкам:</b> КТ-исследование должно быть представлено в виде папки с валидными DICOM-файлами (без пропущенных срезов и без артефактов реконструкции).</li>
-            <li><b>Высокое разрешение (Highres):</b> Режим высокой точности обеспечивает максимальную детализацию контуров органов, но требует больше времени для расчетов и большего объема RAM (рекомендуется от 16 ГБ).</li>
-            <li><b>Требования для GPU-режима:</b> Требуется дискретная видеокарта Nvidia (архитектура Pascal и новее), установленные драйверы CUDA и PyTorch с поддержкой CUDA в виртуальном окружении.</li>
+            <li><b>Динамические пресеты:</b> Вы можете легко добавлять или редактировать анатомические пресеты во внешнем файле <span class="highlight">presets.json</span> в корневой папке проекта.</li>
+            <li><b>Интеллектуальное GPU-ускорение:</b> При наличии видеокарты Nvidia с поддержкой CUDA расчеты будут ускорены в 20-30 раз.</li>
+            <li><b>3D Постобработка:</b> Очистка мелкого шума нейросети (Remove small blobs) и сглаживание Гаусса для сглаживания «ступенчатости» контуров.</li>
+            <li><b>Кастомизация цветов:</b> Интерактивный выбор цветов структур кликом по органу в списке. Поддержка готовых цветовых палитр (QUANTEC, Неон).</li>
+            <li><b>Пресет «Брахитерапия»:</b> Специальный пресет, содержащий мочевой пузырь, тонкий кишечник и сдублированную геометрическую маску кишки под двумя именами.</li>
         </ul>
     </div>
 
@@ -1899,8 +1531,7 @@ if PYQT_AVAILABLE:
         <div class="disclaimer-title">⚠️ ВАЖНЫЙ МЕДИЦИНСКИЙ ДИСКЛЕЙМЕР</div>
         <p style="margin: 0; font-size: 12.5px; color: #e0b0b0;">
             Данное программное обеспечение предоставляется исключительно для научных и исследовательских целей (<b>Research Use Only</b>). <br><br>
-            Автоматическая разметка, сгенерированная искусственным интеллектом, <b>не является окончательной клинической разметкой</b>. Она <b>не должна напрямую использоваться</b> для планирования лучевой терапии, хирургических вмешательств или других клинических манипуляций без обязательной проверки. <br><br>
-            Любая импортированная разметка <b>подлежит обязательному ручному контролю, валидации и коррекции</b> сертифицированным медицинским физиком или радиационным онкологом в клинической системе планирования (TPS) перед облучением пациента. Разработчики не несут ответственности за любые клинические решения, принятые на основе работы ПО.
+            Автоматическая разметка <b>не является окончательной клинической разметкой</b>. Любая импортированная разметка <b>подлежит обязательному ручному контролю, валидации и коррекции</b> сертифицированным медицинским физиком или радиационным онкологом в системе планирования (TPS) перед облучением пациента.
         </p>
     </div>
 </body>
@@ -1909,13 +1540,11 @@ if PYQT_AVAILABLE:
             browser.setHtml(html_content)
             layout.addWidget(browser, 1)
             
-            # Кнопка закрытия
             btn_close = QPushButton("Ясно, закрыть")
             btn_close.setObjectName("btnAction")
             btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_close.clicked.connect(dialog.accept)
             
-            # Разместим кнопку по центру
             btn_layout = QHBoxLayout()
             btn_layout.addStretch()
             btn_layout.addWidget(btn_close)
@@ -1933,59 +1562,14 @@ if PYQT_AVAILABLE:
 # ==============================================================================
 
 if __name__ == "__main__":
-    # Если переданы аргументы командной строки, запускаем в режиме CLI
-    if len(sys.argv) > 1:
-        parser = argparse.ArgumentParser(
-            description="MVP автооконтурирования органов риска на КТ для лучевой терапии."
-        )
-        parser.add_argument(
-            "-i", "--input",
-            required=True,
-            help="Путь к папке, содержащей исходные КТ-срезы в формате DICOM."
-        )
-        parser.add_argument(
-            "-o", "--output",
-            required=False,
-            default=None,
-            help="Путь к папке сохранения rtstruct.dcm (по умолчанию: совпадает со входной папкой КТ)."
-        )
-        parser.add_argument(
-            "-p", "--preset",
-            default="abdominal_oar",
-            choices=list(PRESETS.keys()) + ["all"],
-            help="Пресет органов риска для экспорта (по умолчанию: abdominal_oar)."
-        )
-        parser.add_argument(
-            "-hr", "--highres",
-            action="store_true",
-            help="Запустить сегментацию в высоком качестве (1.5 мм разрешение вместо 3 мм)."
-        )
+    if not PYQT_AVAILABLE:
+        print("Ошибка: Для запуска GUI необходима библиотека PyQt6.")
+        print("Установите ее: pip install PyQt6")
+        sys.exit(1)
         
-        args = parser.parse_args()
-        output_path = args.output if args.output is not None else args.input
-        
-        # В CLI проверяем доступность выходного пути на запись
-        test_file_path = os.path.join(output_path, f".write_test_{int(time.time())}")
-        try:
-            with open(test_file_path, "w") as f:
-                f.write("test")
-            os.remove(test_file_path)
-        except Exception:
-            print(f"Ошибка: Папка для сохранения результатов '{output_path}' защищена от записи.")
-            print("Укажите другую папку с помощью параметра -o / --output.")
-            sys.exit(1)
-            
-        run_pipeline(args.input, output_path, args.preset, args.highres)
-    else:
-        # Режим GUI
-        if not PYQT_AVAILABLE:
-            print("Ошибка: Для запуска GUI необходима библиотека PyQt6.")
-            print("Установите ее с помощью команды: pip install PyQt6")
-            sys.exit(1)
-            
-        app = QApplication(sys.argv)
-        app.setStyle("Fusion")
-        
-        window = MainWindow()
-        window.show()
-        sys.exit(app.exec())
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())

@@ -6,3 +6,4 @@ rt-utils
 nibabel
 PyQt6
 torch
+scipy
