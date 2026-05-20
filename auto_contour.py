@@ -1331,8 +1331,8 @@ if PYQT_AVAILABLE:
             if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
                 reply = QMessageBox.question(
                     self, 
-                    "Отмена или приостановка", 
-                    "Отменить или приостановить операцию?",
+                    "Подтверждение отмены", 
+                    "Вы действительно хотите прервать процесс автоматического оконтурирования?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No
                 )
