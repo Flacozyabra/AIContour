@@ -126,6 +126,33 @@ if PYQT_AVAILABLE:
             except Exception:
                 self.handleError(record)
 
+    class ViewerEventFilter(QObject):
+        """Фильтр событий для переопределения скролла в pyqtgraph ImageView."""
+        def __init__(self, viewer):
+            super().__init__()
+            self.viewer = viewer
+
+        def eventFilter(self, obj, event):
+            if event.type() == event.Type.Wheel:
+                from PyQt6.QtWidgets import QApplication
+                from PyQt6.QtCore import Qt
+                modifiers = QApplication.keyboardModifiers()
+                if modifiers == Qt.KeyboardModifier.ControlModifier:
+                    return False
+                else:
+                    delta = event.angleDelta().y()
+                    if delta != 0 and self.viewer.image is not None:
+                        current_idx = self.viewer.currentIndex
+                        max_idx = self.viewer.image.shape[0] - 1
+                        if delta > 0:
+                            new_idx = max(0, current_idx - 1)
+                        else:
+                            new_idx = min(max_idx, current_idx + 1)
+                        if new_idx != current_idx:
+                            self.viewer.setCurrentIndex(new_idx)
+                    return True
+            return False
+
     class DicomScanWorker(QThread):
         """Фоновый поток для сканирования папок на наличие DICOM серий."""
         scan_started = pyqtSignal(int, int, bool)  # total_dcm_count, total_dirs, is_manual
@@ -923,12 +950,24 @@ if PYQT_AVAILABLE:
             self.btn_run.setObjectName("btnRun")
             self.btn_run.clicked.connect(self.start_segmentation)
 
-            right_layout.addWidget(table_header)
+            # Вертикальный сплиттер для главной зоны и зоны логов
+            v_splitter = QSplitter(Qt.Orientation.Vertical)
+            
+            # Верхняя панель (Таблица + Вьюер)
+            top_panel = QWidget()
+            top_layout = QVBoxLayout(top_panel)
+            top_layout.setContentsMargins(0, 0, 0, 0)
+            
+            top_layout.addWidget(table_header)
             
             # --- Вьюер DICOM (PyQtGraph) ---
             self.dicom_viewer = pg.ImageView()
             self.dicom_viewer.ui.roiBtn.hide()
             self.dicom_viewer.ui.menuBtn.hide()
+            
+            # Подключаем кастомный фильтр событий для скролла
+            self.viewer_event_filter = ViewerEventFilter(self.dicom_viewer)
+            self.dicom_viewer.getView().installEventFilter(self.viewer_event_filter)
             
             # Сплиттер для таблицы и вьюера
             main_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -936,14 +975,25 @@ if PYQT_AVAILABLE:
             main_splitter.addWidget(self.dicom_viewer)
             main_splitter.setSizes([600, 400])
             
-            right_layout.addWidget(main_splitter)
+            top_layout.addWidget(main_splitter)
             
-            right_layout.addWidget(logs_header)
-            right_layout.addWidget(self.log_edit)
-            right_layout.addWidget(progress_header)
-            right_layout.addWidget(self.status_step_label)
-            right_layout.addWidget(self.progress_bar)
-            right_layout.addWidget(self.btn_run)
+            # Нижняя панель (Логи + Прогресс)
+            bottom_panel = QWidget()
+            bottom_layout = QVBoxLayout(bottom_panel)
+            bottom_layout.setContentsMargins(0, 0, 0, 0)
+            
+            bottom_layout.addWidget(logs_header)
+            bottom_layout.addWidget(self.log_edit)
+            bottom_layout.addWidget(progress_header)
+            bottom_layout.addWidget(self.status_step_label)
+            bottom_layout.addWidget(self.progress_bar)
+            bottom_layout.addWidget(self.btn_run)
+            
+            v_splitter.addWidget(top_panel)
+            v_splitter.addWidget(bottom_panel)
+            v_splitter.setSizes([700, 200]) # Пропорции по умолчанию
+            
+            right_layout.addWidget(v_splitter)
 
             splitter.addWidget(right_card)
             splitter.setStretchFactor(0, 0)
