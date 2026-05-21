@@ -1204,6 +1204,7 @@ if PYQT_AVAILABLE:
                 self.progress_dialog.setValue(val)
 
         def on_scan_completed(self, results):
+            self._is_updating_table = True
             if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
                 self.progress_dialog.close()
                 self.progress_dialog = None
@@ -1289,10 +1290,11 @@ if PYQT_AVAILABLE:
                     self.series_table.selectRow(target_row)
                 else:
                     self.series_table.clearSelection()
-
             self.series_table.setUpdatesEnabled(True)
             
             self.on_scan_finished()
+            
+            self._is_updating_table = False
             
         def update_run_button(self, is_patient_selected: bool, custom_text: str = None):
             target_text = custom_text if custom_text else ("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ" if is_patient_selected else "ВЫБЕРИТЕ ПАЦИЕНТА В ТАБЛИЦЕ")
@@ -1325,6 +1327,18 @@ if PYQT_AVAILABLE:
                 self.update_run_button(True, "ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ")
                 row = selected[0].row()
                 selected_path = self.series_table.item(row, 6).text()
+                
+                # Меняем радио-кнопки ТОЛЬКО при ручном клике пользователя
+                if not getattr(self, "_is_updating_table", False):
+                    str_status = self.series_table.item(row, 2).text()
+                    if str_status == "No":
+                        self.radio_merge_merge.setEnabled(False)
+                        self.radio_merge_overwrite.setEnabled(False)
+                        self.radio_merge_new.setChecked(True)
+                    else:
+                        self.radio_merge_merge.setEnabled(True)
+                        self.radio_merge_overwrite.setEnabled(True)
+                        
                 self.check_for_rtstruct(selected_path)
 
         def on_table_double_clicked(self, row, col):
