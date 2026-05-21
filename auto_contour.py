@@ -1544,51 +1544,64 @@ if PYQT_AVAILABLE:
             if self.is_updating_presets:
                 return
 
-            organ_name = item.data(Qt.ItemDataRole.UserRole)
-            if organ_name == "header":
-                # Это клик по заголовку группы!
-                self.is_updating_presets = True
-                new_state = item.checkState()
-                if new_state == Qt.CheckState.PartiallyChecked:
-                    new_state = Qt.CheckState.Checked
-                    item.setCheckState(new_state)
+            try:
+                self.organs_list.blockSignals(True)
+                
+                organ_name = item.data(Qt.ItemDataRole.UserRole)
+                if not organ_name:
+                    return
+                    
+                if organ_name == "header":
+                    # Это клик по заголовку группы!
+                    self.is_updating_presets = True
+                    new_state = item.checkState()
+                    if new_state == Qt.CheckState.PartiallyChecked:
+                        new_state = Qt.CheckState.Checked
+                        item.setCheckState(new_state)
 
-                # Находим все органы в этой группе и ставим им новое состояние
-                row = self.organs_list.row(item)
-                changed_organs = []
-                for i in range(row + 1, self.organs_list.count()):
-                    next_item = self.organs_list.item(i)
-                    next_role = next_item.data(Qt.ItemDataRole.UserRole)
-                    if next_role == "header":
-                        break
-                    next_item.setCheckState(new_state)
-                    changed_organs.append(next_role)
-                self.is_updating_presets = False
+                    # Находим все органы в этой группе и ставим им новое состояние
+                    row = self.organs_list.row(item)
+                    changed_organs = []
+                    for i in range(row + 1, self.organs_list.count()):
+                        next_item = self.organs_list.item(i)
+                        next_role = next_item.data(Qt.ItemDataRole.UserRole)
+                        if next_role == "header":
+                            break
+                        next_item.setCheckState(new_state)
+                        changed_organs.append(next_role)
+                    self.is_updating_presets = False
 
-                # Синхронизируем дубли измененных органов в других группах
-                self.is_updating_presets = True
-                for i in range(self.organs_list.count()):
-                    itm = self.organs_list.item(i)
-                    itm_role = itm.data(Qt.ItemDataRole.UserRole)
-                    if itm_role != "header" and itm_role in changed_organs:
-                        itm.setCheckState(new_state)
-                self.is_updating_presets = False
-            else:
-                # Это клик по обычному органу
-                self.is_updating_presets = True
-                state = item.checkState()
-                # Синхронизация дубликатов
-                for i in range(self.organs_list.count()):
-                    itm = self.organs_list.item(i)
-                    if itm != item and itm.data(Qt.ItemDataRole.UserRole) == organ_name:
-                        itm.setCheckState(state)
-                self.is_updating_presets = False
+                    # Синхронизируем дубли измененных органов в других группах
+                    self.is_updating_presets = True
+                    for i in range(self.organs_list.count()):
+                        itm = self.organs_list.item(i)
+                        itm_role = itm.data(Qt.ItemDataRole.UserRole)
+                        if itm_role != "header" and itm_role in changed_organs:
+                            itm.setCheckState(new_state)
+                    self.is_updating_presets = False
+                else:
+                    # Это клик по обычному органу
+                    self.is_updating_presets = True
+                    state = item.checkState()
+                    # Синхронизация дубликатов
+                    for i in range(self.organs_list.count()):
+                        itm = self.organs_list.item(i)
+                        if itm != item and itm.data(Qt.ItemDataRole.UserRole) == organ_name:
+                            itm.setCheckState(state)
+                    self.is_updating_presets = False
 
-            # Обновляем состояния всех заголовков групп
-            self.update_headers_check_states()
-            # Синхронизируем текст в комбобоксе пресетов
-            self._sync_preset_combo_to_organs()
-            self.save_settings()
+                # Обновляем состояния всех заголовков групп
+                self.update_headers_check_states()
+                # Синхронизируем текст в комбобоксе пресетов
+                self._sync_preset_combo_to_organs()
+                self.save_settings()
+                
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                QMessageBox.warning(self, "Ошибка выбора", f"Сбой при обработке клика: {e}")
+            finally:
+                self.organs_list.blockSignals(False)
 
         def on_organ_selection_changed(self):
             """Слот изменения выделенной строки в списке."""
