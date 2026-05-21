@@ -1306,96 +1306,105 @@ if PYQT_AVAILABLE:
 
         def on_scan_completed(self, results):
             self._is_updating_table = True
-            if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
-                self.progress_dialog.close()
-                self.progress_dialog = None
-                
-            selected_study_path = None
-            if self.series_table.selectedItems():
-                selected_row = self.series_table.selectedItems()[0].row()
-                if selected_row >= 0:
-                    selected_study_path = self.series_table.item(selected_row, 6).text()
-                
-            self.series_table.setUpdatesEnabled(False)
-            
-            existing_paths = {}
-            for row in range(self.series_table.rowCount()):
-                path_item = self.series_table.item(row, 6)
-                if path_item:
-                    existing_paths[path_item.text()] = row
+            try:
+                if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
+                    self.progress_dialog.close()
+                    self.progress_dialog = None
                     
-            new_paths = [res[6] for res in results]
-            
-            rows_to_remove = []
-            for path, row in existing_paths.items():
-                if path not in new_paths:
-                    rows_to_remove.append(row)
+                selected_study_path = None
+                if self.series_table.selectedItems():
+                    selected_row = self.series_table.selectedItems()[0].row()
+                    if selected_row >= 0:
+                        path_item = self.series_table.item(selected_row, 6)
+                        if path_item:
+                            selected_study_path = path_item.text()
                     
-            for row in sorted(rows_to_remove, reverse=True):
-                self.series_table.removeRow(row)
+                self.series_table.setUpdatesEnabled(False)
                 
-            existing_paths = {}
-            for row in range(self.series_table.rowCount()):
-                path_item = self.series_table.item(row, 6)
-                if path_item:
-                    existing_paths[path_item.text()] = row
+                existing_paths = {}
+                for row in range(self.series_table.rowCount()):
+                    path_item = self.series_table.item(row, 6)
+                    if path_item:
+                        existing_paths[path_item.text()] = row
+                        
+                new_paths = [res[6] for res in results]
+                
+                rows_to_remove = []
+                for path, row in existing_paths.items():
+                    if path not in new_paths:
+                        rows_to_remove.append(row)
+                        
+                for row in sorted(rows_to_remove, reverse=True):
+                    self.series_table.removeRow(row)
                     
-            self.series_table.setSortingEnabled(False)
-            
-            for (p_name, p_id, str_status, body_part, slice_count, s_date, path) in results:
-                if path in existing_paths:
-                    row = existing_paths[path]
-                    self.series_table.item(row, 2).setText(str_status)
-                    self.series_table.item(row, 4).setText(str(slice_count))
-                    continue
+                existing_paths = {}
+                for row in range(self.series_table.rowCount()):
+                    path_item = self.series_table.item(row, 6)
+                    if path_item:
+                        existing_paths[path_item.text()] = row
+                        
+                self.series_table.setSortingEnabled(False)
+                
+                for (p_name, p_id, str_status, body_part, slice_count, s_date, path) in results:
+                    if path in existing_paths:
+                        row = existing_paths[path]
+                        item_str = self.series_table.item(row, 2)
+                        item_slices = self.series_table.item(row, 4)
+                        if item_str:
+                            item_str.setText(str_status)
+                        if item_slices:
+                            item_slices.setText(str(slice_count))
+                        continue
 
-                row = self.series_table.rowCount()
-                self.series_table.insertRow(row)
+                    row = self.series_table.rowCount()
+                    self.series_table.insertRow(row)
+                    
+                    self.series_table.setItem(row, 0, QTableWidgetItem(p_name))
+                    
+                    item_id = QTableWidgetItem(p_id)
+                    item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.series_table.setItem(row, 1, item_id)
+                    
+                    item_str = QTableWidgetItem(str_status)
+                    item_str.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.series_table.setItem(row, 2, item_str)
+                    
+                    item_bp = QTableWidgetItem(body_part)
+                    item_bp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.series_table.setItem(row, 3, item_bp)
+                    
+                    item_slices = QTableWidgetItem(str(slice_count))
+                    item_slices.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.series_table.setItem(row, 4, item_slices)
+                    
+                    item_date = QTableWidgetItem(s_date)
+                    item_date.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.series_table.setItem(row, 5, item_date)
+                    
+                    self.series_table.setItem(row, 6, QTableWidgetItem(path))
                 
-                self.series_table.setItem(row, 0, QTableWidgetItem(p_name))
+                self.series_table.setSortingEnabled(True)
+                self.series_table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
                 
-                item_id = QTableWidgetItem(p_id)
-                item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.series_table.setItem(row, 1, item_id)
-                
-                item_str = QTableWidgetItem(str_status)
-                item_str.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.series_table.setItem(row, 2, item_str)
-                
-                item_bp = QTableWidgetItem(body_part)
-                item_bp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.series_table.setItem(row, 3, item_bp)
-                
-                item_slices = QTableWidgetItem(str(slice_count))
-                item_slices.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.series_table.setItem(row, 4, item_slices)
-                
-                item_date = QTableWidgetItem(s_date)
-                item_date.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.series_table.setItem(row, 5, item_date)
-                
-                self.series_table.setItem(row, 6, QTableWidgetItem(path))
-            
-            self.series_table.setSortingEnabled(True)
-            self.series_table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
-            
-            # Восстанавливаем выделение
-            if selected_study_path:
-                target_row = -1
-                for r in range(self.series_table.rowCount()):
-                    if self.series_table.item(r, 6).text() == selected_study_path:
-                        target_row = r
-                        break
-                if target_row >= 0:
-                    self.series_table.setCurrentCell(target_row, 0)
-                    self.series_table.selectRow(target_row)
-                else:
-                    self.series_table.clearSelection()
-            self.series_table.setUpdatesEnabled(True)
-            
-            self.on_scan_finished()
-            
-            self._is_updating_table = False
+                # Восстанавливаем выделение
+                if selected_study_path:
+                    target_row = -1
+                    for r in range(self.series_table.rowCount()):
+                        item_path = self.series_table.item(r, 6)
+                        if item_path and item_path.text() == selected_study_path:
+                            target_row = r
+                            break
+                    if target_row >= 0:
+                        self.series_table.setCurrentCell(target_row, 0)
+                        self.series_table.selectRow(target_row)
+                    else:
+                        self.series_table.clearSelection()
+            except Exception as e:
+                logger.error(f"Ошибка при обновлении таблицы исследований: {e}")
+            finally:
+                self.series_table.setUpdatesEnabled(True)
+                self.on_scan_finished()
+                self._is_updating_table = False
             
         def update_run_button(self, is_patient_selected: bool, custom_text: str = None):
             target_text = custom_text if custom_text else ("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ" if is_patient_selected else "ВЫБЕРИТЕ ПАЦИЕНТА В ТАБЛИЦЕ")
@@ -2094,51 +2103,57 @@ if PYQT_AVAILABLE:
             self.progress_bar.setValue(0)
             self.scan_timer.stop()
             
-            preset_name = self.preset_combo.currentText()
-            preset_key = "abdominal_oar"
-            if "Thorax" in preset_name or "Грудная" in preset_name:
-                preset_key = "thoracic_oar"
-            elif "Pelvis" in preset_name or "Малый" in preset_name:
-                preset_key = "pelvis_oar"
-            elif "Head & Neck" in preset_name or "Голова" in preset_name:
-                preset_key = "head_neck_oar"
-            elif "Brachytherapy" in preset_name or "Брахитерапия" in preset_name:
-                preset_key = "brachytherapy_oar"
-            else:
-                preset_key = "all"
+            try:
+                preset_name = self.preset_combo.currentText()
+                preset_key = "abdominal_oar"
+                if "Thorax" in preset_name or "Грудная" in preset_name:
+                    preset_key = "thoracic_oar"
+                elif "Pelvis" in preset_name or "Малый" in preset_name:
+                    preset_key = "pelvis_oar"
+                elif "Head & Neck" in preset_name or "Голова" in preset_name:
+                    preset_key = "head_neck_oar"
+                elif "Brachytherapy" in preset_name or "Брахитерапия" in preset_name:
+                    preset_key = "brachytherapy_oar"
+                else:
+                    preset_key = "all"
 
-            # Точность
-            precision_modes = ["normal", "fast", "faster"]
-            precision_mode = precision_modes[self.precision_combo.currentIndex()]
+                # Точность
+                precision_modes = ["normal", "fast", "faster"]
+                precision_mode = precision_modes[self.precision_combo.currentIndex()]
 
-            # Сглаживание
-            smoothing_sigmas = [0.5, 1.0, 1.5, 2.0]
-            smoothing_sigma = smoothing_sigmas[self.smoothing_combo.currentIndex()] if self.smoothing_check.isChecked() else 0.0
+                # Сглаживание
+                smoothing_sigmas = [0.5, 1.0, 1.5, 2.0]
+                smoothing_sigma = smoothing_sigmas[self.smoothing_combo.currentIndex()] if self.smoothing_check.isChecked() else 0.0
 
-            # Создаем и запускаем поток вычислений
-            self.worker = SegmentationWorker(
-                engine=self.engine,
-                dicom_dir=dicom_dir,
-                output_dir=output_dir,
-                preset_name=preset_key,
-                precision_mode=precision_mode,
-                selected_organs=selected_organs,
-                merge_mode=merge_mode,
-                existing_rtstruct_path=self.existing_rtstruct_path,
-                use_gpu=self.radio_gpu.isChecked(),
-                remove_blobs=self.clean_blobs_check.isChecked(),
-                smoothing_sigma=smoothing_sigma
-            )
-            self.worker.finished_signal.connect(self.on_segmentation_finished)
-            self.worker.step_signal.connect(self.on_step_changed)
-            self.worker.progress_signal.connect(self.progress_bar.setValue)
-            
-            self.current_step_base_text = "Подготовка пайплайна..."
-            self.spinner_index = 0
-            self.pulse_tick = 0
-            self.activity_timer.start()
-            
-            self.worker.start()
+                # Создаем и запускаем поток вычислений
+                self.worker = SegmentationWorker(
+                    engine=self.engine,
+                    dicom_dir=dicom_dir,
+                    output_dir=output_dir,
+                    preset_name=preset_key,
+                    precision_mode=precision_mode,
+                    selected_organs=selected_organs,
+                    merge_mode=merge_mode,
+                    existing_rtstruct_path=self.existing_rtstruct_path,
+                    use_gpu=self.radio_gpu.isChecked(),
+                    remove_blobs=self.clean_blobs_check.isChecked(),
+                    smoothing_sigma=smoothing_sigma
+                )
+                self.worker.finished_signal.connect(self.on_segmentation_finished)
+                self.worker.step_signal.connect(self.on_step_changed)
+                self.worker.progress_signal.connect(self.progress_bar.setValue)
+                
+                self.current_step_base_text = "Подготовка пайплайна..."
+                self.spinner_index = 0
+                self.pulse_tick = 0
+                self.activity_timer.start()
+                
+                self.worker.start()
+            except Exception as e:
+                logger.exception("Ошибка при запуске сегментации")
+                QMessageBox.critical(self, "Ошибка запуска", f"Не удалось инициализировать сегментацию:\n{e}")
+                self.set_ui_enabled(True)
+                self.scan_timer.start(15000)
 
         def set_ui_enabled(self, enabled: bool):
             self.input_edit.setEnabled(enabled)
