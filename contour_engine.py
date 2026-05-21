@@ -476,7 +476,8 @@ class ContourEngine:
             # Карта виртуальных органов, которые мы можем собрать из долей/частей
             VIRTUAL_ORGANS_MAP = {
                 "lung_left": ["lung_upper_lobe_left", "lung_lower_lobe_left"],
-                "lung_right": ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"]
+                "lung_right": ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"],
+                "brain_stem": ["brainstem"]
             }
 
             # Адаптируем список целевых органов под поддерживаемые классы TotalSegmentator
@@ -514,99 +515,128 @@ class ContourEngine:
             if not totalseg_exe.exists():
                 totalseg_exe = Path("TotalSegmentator")
                 
-            cmd = [
-                str(totalseg_exe),
-                "-i", str(nifti_ct_path),
-                "-o", str(segmentation_dir),
-                "--device", device
-            ]
-            
-            # Настройка флагов точности
-            if precision_mode == "fast":
-                cmd.append("--fast")
-            elif precision_mode == "faster":
-                # Режим ультра-быстрого поиска тела/суб-режима
-                cmd.extend(["--fast", "--task", "body"])
-                # Если в режиме body, то мы ищем только тело, но если пользователь передал конкретные ROI,
-                # TotalSegmentator проигнорирует их. Поэтому мы логируем предупреждение.
-                logger.warning("Запущен сверхбыстрый режим '--task body'. Сегментируется только контур тела!")
-            
-            # Передаем адаптированные органы, если это не режим body (в body ищется только тело)
-            if precision_mode != "faster":
-                # Добавление специализированной задачи для пресета Голова и Шея
+            # ---- ДИНАМИЧЕСКОЕ РАЗДЕЛЕНИЕ ПО ЗАДАЧАМ ----
+            tasks_to_run = {}
+            if precision_mode == "faster":
+                tasks_to_run["body"] = []
+            else:
                 if preset_name == "head_neck_oar" or preset_name == "Голова и Шея (Head & Neck)":
-                    logger.info("Активирована задача 'head' для сегментации глаз, хрусталиков и зрительных нервов.")
-                    cmd.extend(["--task", "head"])
-                    
-                if target_organs:
-                    if totalseg_rois:
-                        cmd.append("--roi_subset")
-                        cmd.extend(totalseg_rois)
-                    else:
-                        raise RuntimeError(
-                            "Ни один из выбранных органов не поддерживается текущей версией TotalSegmentator.\n"
-                            "Пожалуйста, выберите другие органы риска (например, мочевой пузырь или кости)."
-                        )
-            
-            logger.info(f"Запуск внешнего процесса TotalSegmentator: {' '.join(cmd)}")
-            
-            startupinfo = None
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
+                    logger.info("Анализ пресета Голова и Шея: разбиение на задачи total, brain_structures и др.")
                 
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-                startupinfo=startupinfo
-            )
+                try:
+                    from totalsegmentator.map_to_binary import class_map
+                    for organ in totalseg_rois:
+                        task = None
+                        if organ in class_map.get("total", {}).values() or organ in class_map.get("total_v1", {}).values():
+                            task = "total"
+                        elif organ in class_map.get("brain_structures", {}).values():
+                            task = "brain_structures"
+                        elif organ in class_map.get("head_glands_cavities", {}).values():
+                            task = "head_glands_cavities"
+                        elif organ in class_map.get("oculomotor_muscles", {}).values():
+                            task = "oculomotor_muscles"
+                        elif organ in class_map.get("face", {}).values():
+                            task = "face"
+                        else:
+                            for t, m in class_map.items():
+                                if organ in m.values() and t != "total_v1":
+                                    task = t
+                                    break
+                        if task:
+                            if task not in tasks_to_run:
+                                tasks_to_run[task] = []
+                            tasks_to_run[task].append(organ)
+                except ImportError:
+                    # Если class_map недоступен, фолбэк на одну задачу total
+                    tasks_to_run["total"] = totalseg_rois
             
-            if register_process_cb:
-                register_process_cb(process)
-                
-            current_loop_index = 0
-            last_percent = 0
-                
-            # Чтение вывода в реальном времени с поддержкой мгновенной отмены
-            while True:
+            if not tasks_to_run and precision_mode != "faster":
+                raise RuntimeError(
+                    "Ни один из выбранных органов не поддерживается текущей версией TotalSegmentator.\n"
+                    "Пожалуйста, выберите другие органы риска (например, мочевой пузырь или кости)."
+                )
+
+            # Выполняем ИИ-модели последовательно для каждой задачи
+            for task_index, (task_name, task_rois) in enumerate(tasks_to_run.items(), start=1):
                 if is_cancelled_cb and is_cancelled_cb():
-                    if process.poll() is None:
-                        logger.info("Отмена: Принудительное завершение процесса TotalSegmentator...")
-                        process.kill()
                     raise RuntimeError("Операция отменена пользователем.")
                     
-                line = process.stdout.readline()
-                if not line and process.poll() is not None:
-                    break
-                if line:
-                    clean_line = line.strip()
-                    if clean_line:
-                        logger.info(f"[TotalSegmentator]: {clean_line}")
+                cmd = [
+                    str(totalseg_exe),
+                    "-i", str(nifti_ct_path),
+                    "-o", str(segmentation_dir),
+                    "--device", device
+                ]
+                
+                if precision_mode == "fast" or precision_mode == "faster":
+                    cmd.append("--fast")
+                
+                if task_name != "total":
+                    cmd.extend(["--task", task_name])
+                
+                if task_rois and precision_mode != "faster":
+                    cmd.append("--roi_subset")
+                    cmd.extend(task_rois)
+                    
+                logger.info(f"Запуск внешнего процесса TotalSegmentator (Task: {task_name}): {' '.join(cmd)}")
+                
+                startupinfo = None
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    bufsize=1,
+                    startupinfo=startupinfo
+                )
+                
+                if register_process_cb:
+                    register_process_cb(process)
+                    
+                current_loop_index = 0
+                last_percent = 0
+                total_tasks = len(tasks_to_run)
+                    
+                while True:
+                    if is_cancelled_cb and is_cancelled_cb():
+                        if process.poll() is None:
+                            logger.info(f"Отмена: Принудительное завершение задачи {task_name}...")
+                            process.kill()
+                        raise RuntimeError("Операция отменена пользователем.")
                         
-                        if progress_callback:
-                            match = re.search(r'(\d+)%\|', clean_line)
-                            if match:
-                                sub_percent = int(match.group(1))
-                                if sub_percent == 0 and last_percent == 100:
-                                    current_loop_index += 1
-                                last_percent = sub_percent
-                                
-                                global_ai_percent = 5 + int(((current_loop_index * 100) + sub_percent) / 500 * 90)
-                                if current_loop_index == 0:
-                                    txt = "Шаг 2/5: ИИ определяет границы тела (Локализация)..."
-                                else:
-                                    txt = f"Шаг 2/5: ИИ оконтуривает структуры. Расчет части {current_loop_index} из 4..."
-                                progress_callback(global_ai_percent, txt)
-                        
-            return_code = process.wait()
-            if return_code != 0:
-                raise RuntimeError(f"Процесс TotalSegmentator завершился с кодом ошибки {return_code}")
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
+                        break
+                    if line:
+                        clean_line = line.strip()
+                        if clean_line:
+                            logger.info(f"[TotalSegmentator {task_name}]: {clean_line}")
+                            
+                            if progress_callback:
+                                match = re.search(r'(\d+)%\|', clean_line)
+                                if match:
+                                    sub_percent = int(match.group(1))
+                                    if sub_percent == 0 and last_percent == 100:
+                                        current_loop_index += 1
+                                    last_percent = sub_percent
+                                    
+                                    global_ai_percent = 5 + int((((task_index - 1) * 500) + (current_loop_index * 100) + sub_percent) / (total_tasks * 500) * 90)
+                                    if current_loop_index == 0:
+                                        txt = f"Шаг 2/5: ИИ определяет границы тела (Задача {task_index}/{total_tasks}: {task_name})..."
+                                    else:
+                                        txt = f"Шаг 2/5: ИИ оконтуривает структуры (Задача {task_index}/{total_tasks}: {task_name}). Расчет части {current_loop_index} из 4..."
+                                    progress_callback(global_ai_percent, txt)
+                            
+                return_code = process.wait()
+                if return_code != 0:
+                    raise RuntimeError(f"Процесс TotalSegmentator (задача {task_name}) завершился с кодом ошибки {return_code}")
                 
             logger.info(f"Шаг 2 успешно завершен за {time.time() - step_start:.2f} сек.")
 
