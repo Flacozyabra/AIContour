@@ -149,7 +149,8 @@ if PYQT_AVAILABLE:
                     if delta != 0 and self.viewer.image is not None:
                         current_idx = self.viewer.currentIndex
                         max_idx = self.viewer.image.shape[0] - 1
-                        new_idx = max(0, current_idx - 1) if delta > 0 else min(max_idx, current_idx + 1)
+                        # Прокрутка от себя (delta > 0) -> к голове (увеличение Z), к себе -> от головы (уменьшение Z)
+                        new_idx = min(max_idx, current_idx + 1) if delta > 0 else max(0, current_idx - 1)
                         if new_idx != current_idx:
                             self.viewer.setCurrentIndex(new_idx)
                     return True  # блокируем, чтобы pyqtgraph не зумировал
@@ -1528,6 +1529,9 @@ if PYQT_AVAILABLE:
                     volume.append(image)
                     
                 volume_3d = np.stack(volume)
+                # Коррекция Window Level (Контраста)
+                volume_3d = np.clip(volume_3d, -160, 240)
+                
                 # Транспонирование для правильной ориентации в pyqtgraph
                 volume_3d = np.transpose(volume_3d, (0, 2, 1))
                 
@@ -1547,9 +1551,18 @@ if PYQT_AVAILABLE:
             if hasattr(self, 'rtstruct_combo'):
                 self.rtstruct_combo.blockSignals(True)
                 self.rtstruct_combo.clear()
+                
+                # Снимаем галочку и отключаем её
+                self.chk_show_structures.blockSignals(True)
+                self.chk_show_structures.setChecked(False)
                 self.chk_show_structures.setEnabled(False)
+                self.chk_show_structures.blockSignals(False)
+                
                 self.rtstruct_combo.setEnabled(False)
                 self.rtstruct_combo.blockSignals(False)
+                
+                # Принудительно очищаем старый оверлей из вьюера
+                self.on_show_structures_changed()
             
             self.rtstruct_files = []
             if not directory or not os.path.isdir(directory):
@@ -1603,43 +1616,76 @@ if PYQT_AVAILABLE:
             rtstruct_path = self.rtstruct_combo.currentData()
             if not rtstruct_path or not os.path.exists(rtstruct_path):
                 return
-                
+            
             try:
                 from rt_utils import RTStructBuilder
                 self.status_step_label.setText("Загрузка RTSTRUCT...")
                 QApplication.processEvents()
                 
                 rtstruct = RTStructBuilder.create_from(
-                    dicom_series_path=self.current_dicom_dir, 
-                    rt_struct_path=rtstruct_path
+                    dicom_series_path=self.current_dicom_dir,
+                    rt_struct_path=rtstruct_path,
+                    warn_only=True
                 )
                 roi_names = rtstruct.get_roi_names()
+                
+                # Словарь сопоставления алиасов -> базовых имён органов
+                alias_to_organ = {}
+                if hasattr(self.engine, 'presets'):
+                    for pname, pitems in self.engine.presets.items():
+                        for it in pitems:
+                            if isinstance(it, dict):
+                                for organ_name, aliases in it.items():
+                                    for alias in aliases:
+                                        alias_to_organ[alias.lower()] = organ_name.lower()
+                                    alias_to_organ[organ_name.lower()] = organ_name.lower()
+                            elif isinstance(it, str):
+                                alias_to_organ[it.lower()] = it.lower()
+
+                # Собираем отмеченные органы для фильтрации вьюера
+                # ВАЖНО: галочки НЕ меняем - они нужны для сегментации!
+                checked_organs = set()
+                for i in range(self.organs_list.count()):
+                    itm = self.organs_list.item(i)
+                    itm_data = itm.data(Qt.ItemDataRole.UserRole)
+                    if itm_data != "header" and itm.checkState() == Qt.CheckState.Checked:
+                        if isinstance(itm_data, dict):
+                            org_name = itm_data.get("name") or (list(itm_data.keys())[0] if itm_data else "")
+                        else:
+                            org_name = itm_data
+                        if org_name:
+                            checked_organs.add(org_name.lower())
+                
+                # Если ни одна галочка не совпала с органами файла - показываем все
+                file_organs = set(alias_to_organ.get(r.lower(), r.lower()) for r in roi_names)
+                if not checked_organs.intersection(file_organs):
+                    checked_organs = file_organs
                 
                 z_dim, x_dim, y_dim = self.volume_3d_base.shape
                 overlay_3d = np.zeros((z_dim, x_dim, y_dim, 4), dtype=np.uint8)
                 
                 for roi in roi_names:
                     try:
-                        mask_3d = rtstruct.get_roi_mask_by_name(roi) # (x, y, z) bool
-                        mask_3d = np.transpose(mask_3d, (2, 0, 1)) # (z, x, y)
+                        alias_key = roi.lower()
+                        orig_organ = alias_to_organ.get(alias_key, alias_key)
                         
-                        # Корректировка ориентации по запросу пользователя
-                        # 180 градусов по оси Z (отзеркаливание порядка срезов)
-                        mask_3d = np.flip(mask_3d, axis=0)
-                        # 270 градусов в плоскости (поворот)
-                        mask_3d = np.rot90(mask_3d, k=3, axes=(1, 2))
+                        if orig_organ not in checked_organs:
+                            continue
+                            
+                        mask_3d = rtstruct.get_roi_mask_by_name(roi)  # (y, x, z)
+                        mask_3d = np.transpose(mask_3d, (2, 1, 0))  # (z, x, y)
                         
-                        color = self.engine.colors.get(roi, [0, 255, 128])
+                        color = self.engine.colors.get(orig_organ, [0, 255, 128])
                         overlay_3d[mask_3d, 0] = color[0]
                         overlay_3d[mask_3d, 1] = color[1]
                         overlay_3d[mask_3d, 2] = color[2]
-                        overlay_3d[mask_3d, 3] = 100 # Прозрачность
+                        overlay_3d[mask_3d, 3] = 100
                     except Exception:
                         pass
                 
                 self.roi_overlay_3d = overlay_3d
                 self.roi_overlay_item = pg.ImageItem()
-                self.roi_overlay_item.setZValue(10) # поверх КТ
+                self.roi_overlay_item.setZValue(10)
                 self.dicom_viewer.getView().addItem(self.roi_overlay_item)
                 
                 self.update_roi_overlay_frame()
@@ -1647,7 +1693,7 @@ if PYQT_AVAILABLE:
             except Exception as e:
                 logger.error(f"Ошибка загрузки структур во вьюер: {e}")
                 self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
-                
+
         def update_roi_overlay_frame(self):
             if hasattr(self, 'roi_overlay_item') and hasattr(self, 'roi_overlay_3d'):
                 idx = self.dicom_viewer.currentIndex
@@ -1867,6 +1913,10 @@ if PYQT_AVAILABLE:
                 self._sync_preset_combo_to_organs()
                 self.save_settings()
                 
+                # Если включен показ структур, перерисуем их
+                if hasattr(self, 'chk_show_structures') and self.chk_show_structures.isChecked():
+                    self.on_show_structures_changed()
+                
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -1909,6 +1959,10 @@ if PYQT_AVAILABLE:
                         self.update_item_color_icon(itm, organ_name)
                         
                 logger.info(f"Цвет органа {organ_name} успешно изменен на {new_rgb}")
+                
+                # Если включен показ структур, перерисуем их с новым цветом
+                if hasattr(self, 'chk_show_structures') and self.chk_show_structures.isChecked():
+                    self.on_show_structures_changed()
 
         def on_color_preset_changed(self, text: str):
             """Слот изменения цветового пресета."""
