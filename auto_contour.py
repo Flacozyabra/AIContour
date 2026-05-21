@@ -122,7 +122,7 @@ if PYQT_AVAILABLE:
 
     class DicomScanWorker(QThread):
         """Фоновый поток для сканирования папок на наличие DICOM серий."""
-        series_found = pyqtSignal(str, str, str, str)  # name, id, date, path
+        series_found = pyqtSignal(str, str, str, str, str)  # name, id, body_part, date, path
         finished_scan = pyqtSignal()
         error_signal = pyqtSignal(str)
 
@@ -154,12 +154,25 @@ if PYQT_AVAILABLE:
                         p_id = str(getattr(ds, 'PatientID', 'Без ID'))
                         s_date = str(getattr(ds, 'StudyDate', ''))
                         
+                        body_part = str(getattr(ds, 'BodyPartExamined', '')).strip()
+                        if not body_part:
+                            protocol = str(getattr(ds, 'ProtocolName', '')).lower()
+                            desc = str(getattr(ds, 'SeriesDescription', '')).lower()
+                            combined = protocol + " " + desc
+                            if 'head' in combined: body_part = 'Head'
+                            elif 'neck' in combined: body_part = 'Neck'
+                            elif 'chest' in combined or 'thorax' in combined: body_part = 'Chest'
+                            elif 'abdomen' in combined: body_part = 'Abdomen'
+                            elif 'pelvis' in combined: body_part = 'Pelvis'
+                            elif 'brachy' in combined: body_part = 'Brachytherapy'
+                            else: body_part = 'Unknown'
+                        
                         if len(s_date) == 8:
                             s_date = f"{s_date[6:8]}.{s_date[4:6]}.{s_date[0:4]}"
                         elif not s_date:
                             s_date = "Нет даты"
                             
-                        self.series_found.emit(p_name, p_id, s_date, dirpath)
+                        self.series_found.emit(p_name, p_id, body_part, s_date, dirpath)
                     except Exception:
                         pass
                 self.finished_scan.emit()
@@ -824,9 +837,10 @@ if PYQT_AVAILABLE:
             # --- Таблица выбора серии DICOM ---
             table_header = QLabel("Выбор пациента (результат сканирования):")
             table_header.setStyleSheet("font-weight: bold; color: #ffffff;")
-            self.series_table = QTableWidget(0, 4)
-            self.series_table.setHorizontalHeaderLabels(["ФИО", "ID", "Дата исследования", "Путь"])
-            self.series_table.setColumnHidden(3, True) # Скрываем путь
+            self.series_table = QTableWidget(0, 5)
+            self.series_table.setHorizontalHeaderLabels(["ФИО", "ID", "Область сканирования", "Дата исследования", "Путь"])
+            self.series_table.setColumnHidden(4, True) # Скрываем путь
+            self.series_table.setColumnWidth(3, 140)
             self.series_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
             self.series_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
             self.series_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -1066,6 +1080,10 @@ if PYQT_AVAILABLE:
                 self.is_updating_presets = False
                 self.organs_list.blockSignals(False)
                 self.preset_combo.blockSignals(False)
+                
+                input_dir = self.settings.value("input_dir", "")
+                if input_dir and os.path.isdir(input_dir):
+                    self.start_dicom_scan(input_dir)
 
         def save_settings(self):
             """Сохраняет состояние интерфейса в QSettings."""
@@ -1118,13 +1136,25 @@ if PYQT_AVAILABLE:
             self.scan_worker.error_signal.connect(lambda e: logging.getLogger("ContourEngine").error(f"Ошибка сканирования: {e}"))
             self.scan_worker.start()
 
-        def on_series_found(self, p_name, p_id, s_date, path):
+        def on_series_found(self, p_name, p_id, body_part, s_date, path):
             row = self.series_table.rowCount()
             self.series_table.insertRow(row)
+            
             self.series_table.setItem(row, 0, QTableWidgetItem(p_name))
-            self.series_table.setItem(row, 1, QTableWidgetItem(p_id))
-            self.series_table.setItem(row, 2, QTableWidgetItem(s_date))
-            self.series_table.setItem(row, 3, QTableWidgetItem(path))
+            
+            item_id = QTableWidgetItem(p_id)
+            item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.series_table.setItem(row, 1, item_id)
+            
+            item_bp = QTableWidgetItem(body_part)
+            item_bp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.series_table.setItem(row, 2, item_bp)
+            
+            item_date = QTableWidgetItem(s_date)
+            item_date.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.series_table.setItem(row, 3, item_date)
+            
+            self.series_table.setItem(row, 4, QTableWidgetItem(path))
             
         def on_scan_finished(self):
             if self.series_table.rowCount() == 0:
@@ -1138,7 +1168,7 @@ if PYQT_AVAILABLE:
                 self.btn_run.setEnabled(True)
                 self.btn_run.setText("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ")
                 row = selected[0].row()
-                selected_path = self.series_table.item(row, 3).text()
+                selected_path = self.series_table.item(row, 4).text()
                 self.check_for_rtstruct(selected_path)
 
         def check_for_rtstruct(self, directory: str):
@@ -1479,7 +1509,7 @@ if PYQT_AVAILABLE:
                 return
                 
             row = selected[0].row()
-            dicom_dir = self.series_table.item(row, 3).text()
+            dicom_dir = self.series_table.item(row, 4).text()
 
             if not dicom_dir or not os.path.isdir(dicom_dir):
                 QMessageBox.critical(self, "Ошибка", "Путь к DICOM-серии недействителен!")
