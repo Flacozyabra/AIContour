@@ -1,7 +1,14 @@
 {
   "presets": {
     "Голова и шея (Head & Neck)": [
+      "eye_left",
+      "eye_right",
+      "lens_left",
+      "lens_right",
       "brain",
+      "brain_stem",
+      "optic_nerve_left",
+      "optic_nerve_right",
       "spinal_cord",
       "thyroid_gland",
       "skull",
@@ -826,6 +833,41 @@
       72,
       143,
       50
+    ],
+    "eye_left": [
+      255,
+      255,
+      0
+    ],
+    "eye_right": [
+      255,
+      255,
+      0
+    ],
+    "lens_left": [
+      255,
+      165,
+      0
+    ],
+    "lens_right": [
+      255,
+      165,
+      0
+    ],
+    "brain_stem": [
+      210,
+      105,
+      30
+    ],
+    "optic_nerve_left": [
+      240,
+      230,
+      140
+    ],
+    "optic_nerve_right": [
+      240,
+      230,
+      140
     ]
   },
   "ru_names": {
@@ -955,6 +997,13 @@
     "vertebrae_T6": "Грудной позвонок T6 (Vertebra T6)",
     "vertebrae_T7": "Грудной позвонок T7 (Vertebra T7)",
     "vertebrae_T8": "Грудной позвонок T8 (Vertebra T8)",
-    "vertebrae_T9": "Грудной позвонок T9 (Vertebra T9)"
+    "vertebrae_T9": "Грудной позвонок T9 (Vertebra T9)",
+    "eye_left": "Левый глаз (Eye L)",
+    "eye_right": "Правый глаз (Eye R)",
+    "lens_left": "Левый хрусталик (Lens L)",
+    "lens_right": "Правый хрусталик (Lens R)",
+    "brain_stem": "Ствол мозга (Brain Stem)",
+    "optic_nerve_left": "Левый зрительный нерв (Optic Nerve L)",
+    "optic_nerve_right": "Правый зрительный нерв (Optic Nerve R)"
   }
 }
