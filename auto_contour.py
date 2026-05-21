@@ -965,20 +965,41 @@ if PYQT_AVAILABLE:
             top_layout.addWidget(table_header)
             
             # --- Вьюер DICOM (PyQtGraph) ---
+            viewer_container = QWidget()
+            viewer_layout = QVBoxLayout(viewer_container)
+            viewer_layout.setContentsMargins(0, 0, 0, 0)
+            
+            viewer_tools_layout = QHBoxLayout()
+            self.chk_show_structures = QCheckBox("Отображать структуры")
+            self.chk_show_structures.setEnabled(False)
+            self.chk_show_structures.stateChanged.connect(self.on_show_structures_changed)
+            
+            self.rtstruct_combo = QComboBox()
+            self.rtstruct_combo.setEnabled(False)
+            self.rtstruct_combo.currentIndexChanged.connect(self.on_show_structures_changed)
+            
+            viewer_tools_layout.addWidget(self.chk_show_structures)
+            viewer_tools_layout.addWidget(QLabel("Файл:"))
+            viewer_tools_layout.addWidget(self.rtstruct_combo, 1)
+            viewer_layout.addLayout(viewer_tools_layout)
+            
             self.dicom_viewer = pg.ImageView()
             self.dicom_viewer.ui.roiBtn.hide()
             self.dicom_viewer.ui.menuBtn.hide()
+            viewer_layout.addWidget(self.dicom_viewer, 1)
+            
+            # Связываем сигнал смены кадра с обновлением оверлея
+            self.dicom_viewer.sigTimeChanged.connect(self.update_roi_overlay_frame)
             
             # Подключаем кастомный фильтр на viewport() графического виджета
-            # (viewport - это реальный QWidget, который получает мышиные события до перевода в сцену)
             self.viewer_event_filter = ViewerEventFilter(self.dicom_viewer)
             self.dicom_viewer.ui.graphicsView.viewport().installEventFilter(self.viewer_event_filter)
             
             # Горизонтальный сплиттер: 60% таблица / 40% вьюер
             main_splitter = QSplitter(Qt.Orientation.Horizontal)
             main_splitter.addWidget(self.series_table)
-            main_splitter.addWidget(self.dicom_viewer)
-            main_splitter.setStretchFactor(0, 6)  # поддерживает 60/40 при ресайзе окна
+            main_splitter.addWidget(viewer_container)
+            main_splitter.setStretchFactor(0, 6)
             main_splitter.setStretchFactor(1, 4)
             main_splitter.setSizes([600, 400])
             
@@ -1511,13 +1532,27 @@ if PYQT_AVAILABLE:
                 # Транспонирование для правильной ориентации в pyqtgraph
                 volume_3d = np.transpose(volume_3d, (0, 2, 1))
                 
-                self.dicom_viewer.setImage(volume_3d)
+                self.volume_3d_base = volume_3d
+                self.current_dicom_dir = folder_path
+                self.dicom_viewer.setImage(self.volume_3d_base)
+                
+                # Принудительно вызываем обновление оверлея если галка включена
+                if hasattr(self, 'chk_show_structures') and self.chk_show_structures.isChecked():
+                    self.on_show_structures_changed()
             except Exception as e:
                 logger.warning(f"Не удалось загрузить DICOM во вьюер: {e}")
 
         def check_for_rtstruct(self, directory: str):
-            """Находит путь к существующему RTSTRUCT файлу в выбранной папке без изменения UI."""
+            """Находит все RTSTRUCT файлы в выбранной папке."""
             self.existing_rtstruct_path = None
+            if hasattr(self, 'rtstruct_combo'):
+                self.rtstruct_combo.blockSignals(True)
+                self.rtstruct_combo.clear()
+                self.chk_show_structures.setEnabled(False)
+                self.rtstruct_combo.setEnabled(False)
+                self.rtstruct_combo.blockSignals(False)
+            
+            self.rtstruct_files = []
             if not directory or not os.path.isdir(directory):
                 return
 
@@ -1529,13 +1564,89 @@ if PYQT_AVAILABLE:
                         try:
                             ds = pydicom.dcmread(filepath, stop_before_pixels=True)
                             if getattr(ds, "Modality", None) == "RTSTRUCT":
-                                self.existing_rtstruct_path = filepath
-                                break
+                                self.rtstruct_files.append(filepath)
                         except Exception:
                             continue
             except Exception as e:
                 logger.debug(f"Ошибка при поиске пути RTSTRUCT: {e}")
-                # error opening dir
+                
+            if self.rtstruct_files:
+                self.existing_rtstruct_path = self.rtstruct_files[-1]
+                if hasattr(self, 'rtstruct_combo'):
+                    self.rtstruct_combo.blockSignals(True)
+                    for f in self.rtstruct_files:
+                        self.rtstruct_combo.addItem(os.path.basename(f), f)
+                    self.rtstruct_combo.setCurrentIndex(len(self.rtstruct_files) - 1)
+                    self.rtstruct_combo.setEnabled(True)
+                    self.chk_show_structures.setEnabled(True)
+                    self.rtstruct_combo.blockSignals(False)
+                    if self.chk_show_structures.isChecked():
+                        self.on_show_structures_changed()
+
+        def on_show_structures_changed(self):
+            import pyqtgraph as pg
+            import numpy as np
+            
+            # Удаляем старый оверлей
+            if hasattr(self, 'roi_overlay_item'):
+                if self.roi_overlay_item in self.dicom_viewer.getView().addedItems:
+                    self.dicom_viewer.getView().removeItem(self.roi_overlay_item)
+                del self.roi_overlay_item
+                if hasattr(self, 'roi_overlay_3d'):
+                    del self.roi_overlay_3d
+                    
+            if not getattr(self, 'current_dicom_dir', None) or getattr(self, 'volume_3d_base', None) is None:
+                return
+                
+            if not getattr(self, 'chk_show_structures', None) or not self.chk_show_structures.isChecked():
+                return
+                
+            rtstruct_path = self.rtstruct_combo.currentData()
+            if not rtstruct_path or not os.path.exists(rtstruct_path):
+                return
+                
+            try:
+                from rt_utils import RTStructBuilder
+                self.status_step_label.setText("Загрузка RTSTRUCT...")
+                QApplication.processEvents()
+                
+                rtstruct = RTStructBuilder.create_from(
+                    dicom_series_path=self.current_dicom_dir, 
+                    rt_struct_path=rtstruct_path
+                )
+                roi_names = rtstruct.get_roi_names()
+                
+                z_dim, x_dim, y_dim = self.volume_3d_base.shape
+                overlay_3d = np.zeros((z_dim, x_dim, y_dim, 4), dtype=np.uint8)
+                
+                for roi in roi_names:
+                    try:
+                        mask_3d = rtstruct.get_roi_mask_by_name(roi) # (x, y, z) bool
+                        mask_3d = np.transpose(mask_3d, (2, 0, 1)) # (z, x, y)
+                        color = self.engine.colors.get(roi, [0, 255, 128])
+                        overlay_3d[mask_3d, 0] = color[0]
+                        overlay_3d[mask_3d, 1] = color[1]
+                        overlay_3d[mask_3d, 2] = color[2]
+                        overlay_3d[mask_3d, 3] = 100 # Прозрачность
+                    except Exception:
+                        pass
+                
+                self.roi_overlay_3d = overlay_3d
+                self.roi_overlay_item = pg.ImageItem()
+                self.roi_overlay_item.setZValue(10) # поверх КТ
+                self.dicom_viewer.getView().addItem(self.roi_overlay_item)
+                
+                self.update_roi_overlay_frame()
+                self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
+            except Exception as e:
+                logger.error(f"Ошибка загрузки структур во вьюер: {e}")
+                self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
+                
+        def update_roi_overlay_frame(self):
+            if hasattr(self, 'roi_overlay_item') and hasattr(self, 'roi_overlay_3d'):
+                idx = self.dicom_viewer.currentIndex
+                if idx < self.roi_overlay_3d.shape[0]:
+                    self.roi_overlay_item.setImage(self.roi_overlay_3d[idx], autoLevels=False)
 
         def select_all_organs(self):
             """Отмечает все органы в списке."""
