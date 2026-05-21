@@ -28,6 +28,9 @@ import logging
 import re
 from pathlib import Path
 from typing import Dict, List, Optional
+import pyqtgraph as pg
+import numpy as np
+import pydicom
 
 # Импорт PyQt6
 try:
@@ -921,7 +924,20 @@ if PYQT_AVAILABLE:
             self.btn_run.clicked.connect(self.start_segmentation)
 
             right_layout.addWidget(table_header)
-            right_layout.addWidget(self.series_table)
+            
+            # --- Вьюер DICOM (PyQtGraph) ---
+            self.dicom_viewer = pg.ImageView()
+            self.dicom_viewer.ui.roiBtn.hide()
+            self.dicom_viewer.ui.menuBtn.hide()
+            
+            # Сплиттер для таблицы и вьюера
+            main_splitter = QSplitter(Qt.Orientation.Horizontal)
+            main_splitter.addWidget(self.series_table)
+            main_splitter.addWidget(self.dicom_viewer)
+            main_splitter.setSizes([600, 400])
+            
+            right_layout.addWidget(main_splitter)
+            
             right_layout.addWidget(logs_header)
             right_layout.addWidget(self.log_edit)
             right_layout.addWidget(progress_header)
@@ -1332,6 +1348,10 @@ if PYQT_AVAILABLE:
                 # Фоновый поиск реального пути файла
                 self.check_for_rtstruct(selected_path)
                 
+                # Обновляем DICOM-вьюер (только при ручном клике)
+                if not getattr(self, "_is_updating_table", False):
+                    self.update_viewer_with_dicom(selected_path)
+                
                 # Меняем UI (радиокнопки и текстовую надпись) ТОЛЬКО при ручном клике пользователя
                 if not getattr(self, "_is_updating_table", False):
                     str_status = self.series_table.item(row, 2).text()
@@ -1391,6 +1411,48 @@ if PYQT_AVAILABLE:
                         QMessageBox.critical(self, "Ошибка удаления", f"Не удалось удалить папку:\n{e}")
                         logger.error(f"Ошибка удаления: {e}")
                 self.scan_timer.start(15000)
+
+        def update_viewer_with_dicom(self, folder_path: str):
+            if not folder_path or not os.path.isdir(folder_path):
+                return
+            try:
+                import pydicom
+                import numpy as np
+                import glob
+                
+                dcm_files = glob.glob(os.path.join(folder_path, "*.dcm"))
+                slices = []
+                for f in dcm_files:
+                    try:
+                        ds = pydicom.dcmread(f, stop_before_pixels=True)
+                        if hasattr(ds, "Modality") and ds.Modality == "CT" and hasattr(ds, "ImagePositionPatient"):
+                            ds = pydicom.dcmread(f)
+                            slices.append(ds)
+                    except Exception:
+                        pass
+                
+                if not slices:
+                    return
+                    
+                # Сортировка по Z
+                slices.sort(key=lambda x: float(x.ImagePositionPatient[2]))
+                
+                # Формирование 3D массива с учетом HU (RescaleSlope/Intercept)
+                volume = []
+                for s in slices:
+                    image = s.pixel_array.astype(np.float32)
+                    slope = getattr(s, 'RescaleSlope', 1)
+                    intercept = getattr(s, 'RescaleIntercept', 0)
+                    image = image * slope + intercept
+                    volume.append(image)
+                    
+                volume_3d = np.stack(volume)
+                # Транспонирование для правильной ориентации в pyqtgraph
+                volume_3d = np.transpose(volume_3d, (0, 2, 1))
+                
+                self.dicom_viewer.setImage(volume_3d)
+            except Exception as e:
+                logger.warning(f"Не удалось загрузить DICOM во вьюер: {e}")
 
         def check_for_rtstruct(self, directory: str):
             """Находит путь к существующему RTSTRUCT файлу в выбранной папке без изменения UI."""
