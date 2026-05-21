@@ -542,9 +542,9 @@ if PYQT_AVAILABLE:
     }
 
     QRadioButton::indicator:checked {
-        border-color: #007acc;
-        background-color: #242424;
-        image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI1IiBmaWxsPSIjMDA3YWNjIi8+PC9zdmc+");
+        border: none;
+        background: transparent;
+        image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMSIgZmlsbD0iIzAwN2FjYyIvPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjQiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=");
     }
 
     QRadioButton::indicator:disabled {
@@ -553,9 +553,9 @@ if PYQT_AVAILABLE:
     }
 
     QRadioButton::indicator:checked:disabled {
-        border-color: #444444;
-        background-color: #1e1e1e;
-        image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI1IiBmaWxsPSIjNjY2NjY2Ii8+PC9zdmc+");
+        border: none;
+        background: transparent;
+        image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMSIgZmlsbD0iIzQ0NDQ0NCIvPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjQiIGZpbGw9IiNhYWFhYWEiLz48L3N2Zz4=");
     }
 
     QRadioButton::disabled {
@@ -1748,6 +1748,8 @@ if PYQT_AVAILABLE:
         def on_show_structures_changed(self):
             import pyqtgraph as pg
             import numpy as np
+            from PyQt6.QtWidgets import QApplication, QProgressDialog
+            from PyQt6.QtCore import Qt
             
             # Удаляем старый оверлей
             if hasattr(self, 'roi_overlay_item'):
@@ -1767,10 +1769,14 @@ if PYQT_AVAILABLE:
             if not rtstruct_path or not os.path.exists(rtstruct_path):
                 return
             
+            progress_dialog = None
             try:
-                from rt_utils import RTStructBuilder
-                self.status_step_label.setText("Загрузка RTSTRUCT...")
+                # Устанавливаем форму курсора WaitCursor и выводим красивый статус
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                self.status_step_label.setText("⏳ Подготовка 3D-сцены: чтение DICOM RTSTRUCT файла...")
                 QApplication.processEvents()
+                
+                from rt_utils import RTStructBuilder
                 
                 rtstruct = RTStructBuilder.create_from(
                     dicom_series_path=self.current_dicom_dir,
@@ -1778,6 +1784,18 @@ if PYQT_AVAILABLE:
                     warn_only=True
                 )
                 roi_names = rtstruct.get_roi_names()
+                total_rois = len(roi_names)
+                
+                # Создаем красивое модальное окно прогресса
+                progress_dialog = QProgressDialog("⏳ Инициализация 3D-структур...", None, 0, total_rois, self)
+                progress_dialog.setWindowTitle("Загрузка 3D-контуров")
+                progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+                progress_dialog.setMinimumDuration(0)
+                progress_dialog.setCancelButton(None)
+                progress_dialog.setStyleSheet(self.styleSheet())
+                progress_dialog.setValue(0)
+                progress_dialog.show()
+                QApplication.processEvents()
                 
                 # Словарь сопоставления алиасов -> базовых имён органов
                 alias_to_organ = {}
@@ -1791,9 +1809,8 @@ if PYQT_AVAILABLE:
                                     alias_to_organ[organ_name.lower()] = organ_name.lower()
                             elif isinstance(it, str):
                                 alias_to_organ[it.lower()] = it.lower()
-
+ 
                 # Собираем отмеченные органы для фильтрации вьюера
-                # ВАЖНО: галочки НЕ меняем - они нужны для сегментации!
                 checked_organs = set()
                 for i in range(self.organs_list.count()):
                     itm = self.organs_list.item(i)
@@ -1814,14 +1831,24 @@ if PYQT_AVAILABLE:
                 z_dim, x_dim, y_dim = self.volume_3d_base.shape
                 overlay_3d = np.zeros((z_dim, x_dim, y_dim, 4), dtype=np.uint8)
                 
-                for roi in roi_names:
+                for idx, roi in enumerate(roi_names, start=1):
                     try:
                         alias_key = roi.lower()
                         orig_organ = alias_to_organ.get(alias_key, alias_key)
                         
+                        # Получаем красивое русское название органа для пошагового вывода
+                        ru_name = self.engine.ru_names.get(orig_organ, orig_organ)
+                        
+                        # Обновляем прогресс
+                        if progress_dialog:
+                            progress_dialog.setValue(idx)
+                            progress_dialog.setLabelText(f"⏳ Отрисовка контуров: {ru_name} ({idx}/{total_rois})...")
+                        self.status_step_label.setText(f"⏳ Отрисовка контуров: {ru_name} ({idx}/{total_rois})...")
+                        QApplication.processEvents()
+                        
                         if orig_organ not in checked_organs:
                             continue
-                            
+                        
                         mask_3d = rtstruct.get_roi_mask_by_name(roi)  # (y, x, z)
                         mask_3d = np.transpose(mask_3d, (2, 1, 0))  # (z, x, y)
                         
@@ -1830,8 +1857,8 @@ if PYQT_AVAILABLE:
                         overlay_3d[mask_3d, 1] = color[1]
                         overlay_3d[mask_3d, 2] = color[2]
                         overlay_3d[mask_3d, 3] = 100
-                    except Exception:
-                        pass
+                    except Exception as roi_e:
+                        logger.warning(f"Не удалось отрисовать структуру {roi}: {roi_e}")
                 
                 self.roi_overlay_3d = overlay_3d
                 self.roi_overlay_item = pg.ImageItem()
@@ -1843,6 +1870,10 @@ if PYQT_AVAILABLE:
             except Exception as e:
                 logger.error(f"Ошибка загрузки структур во вьюер: {e}")
                 self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
+            finally:
+                if progress_dialog:
+                    progress_dialog.close()
+                QApplication.restoreOverrideCursor()
 
         def update_roi_overlay_frame(self):
             if hasattr(self, 'roi_overlay_item') and hasattr(self, 'roi_overlay_3d'):

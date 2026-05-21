@@ -220,6 +220,139 @@ class ContourEngine:
         # Избегаем слишком темных цветов, минимальная яркость 50
         return [max(50, int(h[0])), max(50, int(h[1])), max(50, int(h[2]))]
 
+    @staticmethod
+    def translate_organ_to_ru(organ_name: str) -> str:
+        """
+        Интеллектуальный перевод названий органов TotalSegmentator на русский язык
+        с сохранением английского аналога в скобках.
+        """
+        import re
+        org = organ_name.lower().strip()
+        
+        # 1. Жестко заданные переводы для полных совпадений
+        exact_translations = {
+            "spleen": "Селезенка (Spleen)",
+            "gallbladder": "Желчный пузырь (Gallbladder)",
+            "liver": "Печень (Liver)",
+            "stomach": "Желудок (Stomach)",
+            "aorta": "Аорта (Aorta)",
+            "inferior_vena_cava": "Нижняя полая вена (Vena Cava)",
+            "superior_vena_cava": "Верхняя полая вена (Vena Cava Sup)",
+            "portal_vein_and_splenic_vein": "Воротная и селезеночная вены (Portal/Splenic V)",
+            "pancreas": "Поджелудочная железа (Pancreas)",
+            "urinary_bladder": "Мочевой пузырь (Bladder)",
+            "esophagus": "Пищевод (Esophagus)",
+            "trachea": "Трахея (Trachea)",
+            "heart": "Сердце (Heart)",
+            "heart_myocardium": "Миокард сердца (Myocardium)",
+            "pulmonary_artery": "Легочная артерия (Pulmonary Artery)",
+            "brain": "Головной мозг (Brain)",
+            "spinal_cord": "Спинной мозг (Spinal Cord)",
+            "duodenum": "Двенадцатиперстная кишка (Duodenum)",
+            "colon": "Ободочная кишка (Colon)",
+            "rectum": "Прямая кишка (Rectum)",
+            "small_bowel": "Тонкая кишка (Small Bowel)",
+            "prostate": "Предстательная железа (Prostate)",
+            "sacrum": "Крестец (Sacrum)",
+            "sternum": "Грудина (Sternum)",
+            "skull": "Череп (Skull)",
+            "body": "Тело (Body)",
+            "face": "Лицо (Face)",
+            "thyroid_gland": "Щитовидная железа (Thyroid Gland)",
+            "spinal_canal": "Спинномозговой канал (Spinal Canal)",
+            "brain_stem": "Ствол мозга (Brain Stem)",
+        }
+        
+        if org in exact_translations:
+            return exact_translations[org]
+            
+        # 2. Регулярное выражение для ребер (rib_left_1..12, rib_right_1..12)
+        rib_match = re.match(r"^rib_(left|right)_(\d+)$", org)
+        if rib_match:
+            side = rib_match.group(1)
+            num = rib_match.group(2)
+            side_ru = "Левое" if side == "left" else "Правое"
+            side_en = "L" if side == "left" else "R"
+            return f"{side_ru} ребро {num} (Rib {side_en}{num})"
+            
+        # 3. Регулярное выражение для позвонков (vertebrae_C1..C7, vertebrae_T1..T12, vertebrae_L1..L5, vertebrae_S1..S5)
+        vert_match = re.match(r"^vertebrae_([cctlsa-zA-Z])(\d+)$", org)
+        if vert_match:
+            v_type = vert_match.group(1).upper()
+            num = vert_match.group(2)
+            type_ru = "Шейный"
+            if v_type == "T":
+                type_ru = "Грудной"
+            elif v_type == "L":
+                type_ru = "Поясничный"
+            elif v_type == "S":
+                type_ru = "Крестцовый"
+            return f"{type_ru} позвонок {v_type}{num} (Vertebra {v_type}{num})"
+            
+        # 4. Регулярное выражение для парных костей, сосудов, мышц и органов с суффиксами _left и _right
+        side_match = re.match(r"^(.+)_(left|right)$", org)
+        if side_match:
+            base = side_match.group(1)
+            side = side_match.group(2)
+            
+            # Словарь базовых анатомических структур и их родов (m = мужской, f = женский, n = средний)
+            base_definitions = {
+                # Органы
+                "kidney": ("почка", "Kidney", "f"),
+                "lung": ("легкое", "Lung", "n"),
+                "adrenal_gland": ("надпочечник", "Adrenal Gland", "m"),
+                "eye": ("глаз", "Eye", "m"),
+                "lens": ("хрусталик", "Lens", "m"),
+                "optic_nerve": ("зрительный нерв", "Optic Nerve", "m"),
+                
+                # Кости
+                "humerus": ("плечевая кость", "Humerus", "f"),
+                "scapula": ("лопатка", "Scapula", "f"),
+                "clavicula": ("ключица", "Clavicle", "f"),
+                "femur": ("бедренная кость", "Femur", "f"),
+                "hip": ("тазовая кость (таз)", "Hip", "f"),
+                "patella": ("надколенник", "Patella", "m"),
+                "tibia": ("большеберцовая кость", "Tibia", "f"),
+                "fibula": ("малоберцовая кость", "Fibula", "f"),
+                
+                # Сосуды
+                "subclavian_artery": ("подключичная артерия", "Subclavian Artery", "f"),
+                "subclavian_vein": ("подключичная вена", "Subclavian Vein", "f"),
+                "common_carotid_artery": ("общая сонная артерия", "Carotid Artery", "f"),
+                "internal_jugular_vein": ("внутренняя яремная вена", "Jugular Vein", "f"),
+                "iliac_artery": ("подвздошная артерия", "Iliac Artery", "f"),
+                "iliac_vein": ("подвздошная вена", "Iliac Vein", "f"),
+                
+                # Мышцы
+                "gluteus_maximus": ("большая ягодичная мышца", "Gluteus Maximus", "f"),
+                "gluteus_medius": ("средняя ягодичная мышца", "Gluteus Medius", "f"),
+                "gluteus_minimus": ("малая ягодичная мышца", "Gluteus Minimus", "f"),
+                "autochthon": ("автохтонная мышца спины", "Autochthon Muscle", "f"),
+                "iliopsoas": ("подвздошно-поясничная мышца", "Iliopsoas Muscle", "f"),
+                "psoas_major": ("большая поясничная мышца", "Psoas Major Muscle", "f"),
+                
+                # Дополнительно
+                "heart_atrium": ("предсердие", "Atrium", "n"),
+                "heart_ventricle": ("желудочек", "Ventricle", "m"),
+            }
+            
+            if base in base_definitions:
+                ru_base, en_base, gender = base_definitions[base]
+                
+                # Согласование по роду
+                if side == "left":
+                    side_ru = "Левая" if gender == "f" else ("Левый" if gender == "m" else "Левое")
+                    side_en = "L"
+                else:
+                    side_ru = "Правая" if gender == "f" else ("Правый" if gender == "m" else "Правое")
+                    side_en = "R"
+                    
+                return f"{side_ru} {ru_base} ({en_base} {side_en})"
+                
+        # Если ничего не подошло, возвращаем красивую капитализированную строку с оригинальным именем
+        clean_org = organ_name.replace("_", " ").title()
+        return f"{clean_org} ({organ_name})"
+
     def _update_presets_with_total_classes(self) -> None:
         """Сравнивает текущие ru_names/colors с полным списком и дополняет их."""
         all_organs = self.get_all_supported_organs()
@@ -232,11 +365,17 @@ class ContourEngine:
             if org == "body":
                 continue
             full_total_preset.append(org)
-            if org not in self.ru_names:
-                self.ru_names[org] = org
+            if org not in self.ru_names or self.ru_names[org] == org:
+                self.ru_names[org] = self.translate_organ_to_ru(org)
                 changed = True
             if org not in self.colors:
                 self.colors[org] = self._get_default_color(org)
+                changed = True
+
+        # Проверим также все существующие ключи в self.ru_names на случай, если там остались латинские дубли
+        for org in list(self.ru_names.keys()):
+            if self.ru_names[org] == org:
+                self.ru_names[org] = self.translate_organ_to_ru(org)
                 changed = True
 
         preset_key = "Все структуры / Full Total"
