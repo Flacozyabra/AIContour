@@ -36,7 +36,8 @@ try:
         QRadioButton, QButtonGroup, QTextEdit, QProgressBar, QFileDialog,
         QMessageBox, QFrame, QSplitter, QCheckBox, QDialog, QTextBrowser,
         QTabWidget, QColorDialog, QGroupBox,
-        QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMenu
+        QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMenu,
+        QProgressDialog
     )
     from PyQt6.QtCore import QThread, pyqtSignal, Qt, QObject, QSettings, QTimer
     from PyQt6.QtGui import QTextCursor, QBrush, QColor, QFont, QIcon, QPixmap
@@ -123,13 +124,15 @@ if PYQT_AVAILABLE:
 
     class DicomScanWorker(QThread):
         """Фоновый поток для сканирования папок на наличие DICOM серий."""
-        series_found = pyqtSignal(str, str, str, str, int, str, str)  # name, id, str_status, body_part, slices, date, path
-        finished_scan = pyqtSignal()
+        scan_started = pyqtSignal(int, int, bool)  # total_dcm_count, total_dirs, is_manual
+        scan_progress = pyqtSignal(int)
+        scan_completed = pyqtSignal(list)
         error_signal = pyqtSignal(str)
 
-        def __init__(self, root_dir: str):
+        def __init__(self, root_dir: str, is_manual_scan: bool = True):
             super().__init__()
             self.root_dir = root_dir
+            self.is_manual_scan = is_manual_scan
             self.is_cancelled = False
 
         def cancel(self):
@@ -140,20 +143,29 @@ if PYQT_AVAILABLE:
             import pydicom
             from pathlib import Path
             try:
+                target_dirs = []
+                total_dcm_count = 0
                 for dirpath, dirnames, filenames in os.walk(self.root_dir):
                     if self.is_cancelled:
-                        break
-                    
+                        return
                     dcm_files = [f for f in filenames if f.lower().endswith('.dcm')]
-                    if not dcm_files:
-                        continue
+                    if dcm_files:
+                        target_dirs.append((dirpath, dcm_files))
+                        total_dcm_count += len(dcm_files)
+
+                self.scan_started.emit(total_dcm_count, len(target_dirs), self.is_manual_scan)
+
+                results = []
+                for i, (dirpath, dcm_files) in enumerate(target_dirs):
+                    if self.is_cancelled:
+                        return
                         
                     slice_count = len(dcm_files)
                     has_rtstruct = False
                     
                     for dcm in dcm_files:
                         if self.is_cancelled:
-                            break
+                            return
                         try:
                             ds = pydicom.dcmread(str(Path(dirpath) / dcm), stop_before_pixels=True)
                             if str(getattr(ds, 'Modality', '')) == 'RTSTRUCT':
@@ -161,6 +173,9 @@ if PYQT_AVAILABLE:
                                 break
                         except Exception:
                             pass
+
+                    if self.is_cancelled:
+                        return
 
                     first_dcm = Path(dirpath) / dcm_files[0]
                     try:
@@ -188,10 +203,14 @@ if PYQT_AVAILABLE:
                             s_date = "Нет даты"
                             
                         str_status = "Yes" if has_rtstruct else "No"
-                        self.series_found.emit(p_name, p_id, str_status, body_part, slice_count, s_date, dirpath)
+                        results.append((p_name, p_id, str_status, body_part, slice_count, s_date, dirpath))
                     except Exception:
                         pass
-                self.finished_scan.emit()
+                    
+                    if i % max(1, len(target_dirs) // 10) == 0 or i == len(target_dirs) - 1:
+                        self.scan_progress.emit(i + 1)
+                        
+                self.scan_completed.emit(results)
             except Exception as e:
                 self.error_signal.emit(str(e))
 
@@ -588,6 +607,11 @@ if PYQT_AVAILABLE:
             self.current_step_base_text = "Ожидание запуска..."
             self.SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
+            # Таймер фонового сканирования
+            self.scan_timer = QTimer(self)
+            self.scan_timer.setInterval(15000)
+            self.scan_timer.timeout.connect(self.start_background_scan)
+
             self.init_ui()
             self.load_settings()
 
@@ -851,6 +875,12 @@ if PYQT_AVAILABLE:
             self.log_edit.setPlaceholderText("Здесь будет отображаться ход выполнения автооконтурирования...")
 
             # --- Таблица выбора серии DICOM ---
+            # Отключаем таблицу и таймер
+            self.series_table.setEnabled(False)
+            self.scan_timer.stop()
+            self.input_edit.setEnabled(False)
+            self.btn_run.setText("ОТМЕНИТЬ АВТООКОНТУРИРОВАНИЕ")
+            self.btn_run.setStyleSheet("background-color: #c0392b; color: white;")
             table_header = QLabel("Выбор пациента (результат сканирования):")
             table_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.series_table = QTableWidget(0, 7)
@@ -1108,7 +1138,8 @@ if PYQT_AVAILABLE:
                 
                 input_dir = self.settings.value("input_dir", "")
                 if input_dir and os.path.isdir(input_dir):
-                    self.start_dicom_scan(input_dir)
+                    self.start_dicom_scan(input_dir, is_manual=True)
+                    self.scan_timer.start()
 
         def save_settings(self):
             """Сохраняет состояние интерфейса в QSettings."""
@@ -1144,52 +1175,90 @@ if PYQT_AVAILABLE:
             if dir_path:
                 self.input_edit.setText(dir_path)
                 self.save_settings()
-                self.start_dicom_scan(dir_path)
+                self.start_dicom_scan(dir_path, is_manual=True)
+                self.scan_timer.start()
 
-        def start_dicom_scan(self, dir_path: str):
-            self.series_table.setRowCount(0)
-            self.btn_run.setEnabled(False)
-            self.btn_run.setText("СКАНИРОВАНИЕ ПАПОК...")
-            
+        def start_dicom_scan(self, dir_path: str, is_manual: bool = True):
             if hasattr(self, 'scan_worker') and self.scan_worker.isRunning():
-                self.scan_worker.cancel()
-                self.scan_worker.wait()
+                return
                 
-            self.scan_worker = DicomScanWorker(dir_path)
-            self.scan_worker.series_found.connect(self.on_series_found)
-            self.scan_worker.finished_scan.connect(self.on_scan_finished)
+            self.btn_run.setEnabled(False)
+            if is_manual:
+                self.btn_run.setText("СКАНИРОВАНИЕ ПАПОК...")
+            
+            self.scan_worker = DicomScanWorker(dir_path, is_manual_scan=is_manual)
+            self.scan_worker.scan_started.connect(self.on_scan_started)
+            self.scan_worker.scan_progress.connect(self.on_scan_progress)
+            self.scan_worker.scan_completed.connect(self.on_scan_completed)
             self.scan_worker.error_signal.connect(lambda e: logging.getLogger("ContourEngine").error(f"Ошибка сканирования: {e}"))
             self.scan_worker.start()
 
-        def on_series_found(self, p_name, p_id, str_status, body_part, slice_count, s_date, path):
-            row = self.series_table.rowCount()
-            self.series_table.insertRow(row)
+        def start_background_scan(self):
+            dir_path = self.input_edit.text().strip()
+            if dir_path and os.path.isdir(dir_path):
+                self.start_dicom_scan(dir_path, is_manual=False)
+
+        def on_scan_started(self, total_dcm, total_dirs, is_manual):
+            if is_manual and total_dcm > 500:
+                self.progress_dialog = QProgressDialog("Сканирование папок DICOM...", None, 0, total_dirs, self)
+                self.progress_dialog.setWindowTitle("Поиск исследований")
+                self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+                self.progress_dialog.setMinimumDuration(0)
+                self.progress_dialog.setValue(0)
+                self.progress_dialog.setCancelButton(None)
+            else:
+                self.progress_dialog = None
+
+        def on_scan_progress(self, val):
+            if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
+                self.progress_dialog.setValue(val)
+
+        def on_scan_completed(self, results):
+            if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
+                self.progress_dialog.close()
+                self.progress_dialog = None
+                
+            selected_path = None
+            if self.series_table.selectedItems():
+                row = self.series_table.selectedItems()[0].row()
+                selected_path = self.series_table.item(row, 6).text()
+                
+            self.series_table.setSortingEnabled(False)
+            self.series_table.setRowCount(0)
             
-            self.series_table.setItem(row, 0, QTableWidgetItem(p_name))
+            for (p_name, p_id, str_status, body_part, slice_count, s_date, path) in results:
+                row = self.series_table.rowCount()
+                self.series_table.insertRow(row)
+                
+                self.series_table.setItem(row, 0, QTableWidgetItem(p_name))
+                
+                item_id = QTableWidgetItem(p_id)
+                item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.series_table.setItem(row, 1, item_id)
+                
+                item_str = QTableWidgetItem(str_status)
+                item_str.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.series_table.setItem(row, 2, item_str)
+                
+                item_bp = QTableWidgetItem(body_part)
+                item_bp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.series_table.setItem(row, 3, item_bp)
+                
+                item_slices = QTableWidgetItem(str(slice_count))
+                item_slices.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.series_table.setItem(row, 4, item_slices)
+                
+                item_date = QTableWidgetItem(s_date)
+                item_date.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.series_table.setItem(row, 5, item_date)
+                
+                self.series_table.setItem(row, 6, QTableWidgetItem(path))
+                
+                if selected_path and path == selected_path:
+                    self.series_table.selectRow(row)
             
-            item_id = QTableWidgetItem(p_id)
-            item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.series_table.setItem(row, 1, item_id)
-            
-            item_str = QTableWidgetItem(str_status)
-            item_str.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if str_status == "Yes":
-                item_str.setForeground(QBrush(QColor("#2ecc71")))
-            self.series_table.setItem(row, 2, item_str)
-            
-            item_bp = QTableWidgetItem(body_part)
-            item_bp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.series_table.setItem(row, 3, item_bp)
-            
-            item_slices = QTableWidgetItem(str(slice_count))
-            item_slices.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.series_table.setItem(row, 4, item_slices)
-            
-            item_date = QTableWidgetItem(s_date)
-            item_date.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.series_table.setItem(row, 5, item_date)
-            
-            self.series_table.setItem(row, 6, QTableWidgetItem(path))
+            self.series_table.setSortingEnabled(True)
+            self.on_scan_finished()
             
         def on_scan_finished(self):
             if self.series_table.rowCount() == 0:
@@ -1227,6 +1296,7 @@ if PYQT_AVAILABLE:
             
             action = menu.exec(self.series_table.viewport().mapToGlobal(position))
             if action == delete_action:
+                self.scan_timer.stop()
                 reply = QMessageBox.question(
                     self,
                     "Удаление исследования",
@@ -1243,6 +1313,7 @@ if PYQT_AVAILABLE:
                     except Exception as e:
                         QMessageBox.critical(self, "Ошибка удаления", f"Не удалось удалить папку:\n{e}")
                         logger.error(f"Ошибка удаления: {e}")
+                self.scan_timer.start(15000)
 
         def check_for_rtstruct(self, directory: str):
             """Автоматически сканирует папку КТ на наличие существующего RTSTRUCT файла."""
@@ -1574,6 +1645,7 @@ if PYQT_AVAILABLE:
                     self.status_step_label.setText("Отмена процесса...")
                     self.status_step_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
                     self.worker.cancel()
+                    self.scan_timer.start(15000)
                 return
 
             selected = self.series_table.selectedItems()
@@ -1640,6 +1712,7 @@ if PYQT_AVAILABLE:
             self.set_ui_enabled(False)
             self.log_edit.clear()
             self.progress_bar.setValue(0)
+            self.scan_timer.stop()
             
             preset_name = self.preset_combo.currentText()
             preset_key = "abdominal_oar"
@@ -1746,6 +1819,7 @@ if PYQT_AVAILABLE:
             )
 
         def on_segmentation_finished(self, success: bool, message: str):
+            self.scan_timer.start(15000)
             self.set_ui_enabled(True)
             self.progress_bar.setRange(0, 100)
             self.activity_timer.stop()
