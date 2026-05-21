@@ -875,12 +875,6 @@ if PYQT_AVAILABLE:
             self.log_edit.setPlaceholderText("Здесь будет отображаться ход выполнения автооконтурирования...")
 
             # --- Таблица выбора серии DICOM ---
-            # Отключаем таблицу и таймер
-            self.series_table.setEnabled(False)
-            self.scan_timer.stop()
-            self.input_edit.setEnabled(False)
-            self.btn_run.setText("ОТМЕНИТЬ АВТООКОНТУРИРОВАНИЕ")
-            self.btn_run.setStyleSheet("background-color: #c0392b; color: white;")
             table_header = QLabel("Выбор пациента (результат сканирования):")
             table_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.series_table = QTableWidget(0, 7)
@@ -1761,6 +1755,7 @@ if PYQT_AVAILABLE:
 
         def set_ui_enabled(self, enabled: bool):
             self.input_edit.setEnabled(enabled)
+            self.series_table.setEnabled(enabled)
             self.btn_input.setEnabled(enabled)
             self.btn_select_all.setEnabled(enabled)
             self.btn_deselect_all.setEnabled(enabled)
