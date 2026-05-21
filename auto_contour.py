@@ -1298,22 +1298,35 @@ if PYQT_AVAILABLE:
             
             self.on_scan_finished()
             
+        def update_run_button(self, is_patient_selected: bool, custom_text: str = None):
+            target_text = custom_text if custom_text else ("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ" if is_patient_selected else "ВЫБЕРИТЕ ПАЦИЕНТА В ТАБЛИЦЕ")
+            target_enabled = is_patient_selected if custom_text != "КТ-СЕРИИ НЕ НАЙДЕНЫ" else False
+            
+            if self.btn_run.text() != target_text:
+                self.btn_run.setText(target_text)
+                
+            if self.btn_run.isEnabled() != target_enabled:
+                self.btn_run.setEnabled(target_enabled)
+                
+            current_style = self.btn_run.styleSheet()
+            if is_patient_selected and "background-color: #0078d7" not in current_style:
+                self.btn_run.setStyleSheet("background-color: #0078d7; color: white; font-weight: bold;")
+            elif not is_patient_selected and current_style != "":
+                self.btn_run.setStyleSheet("")
+
         def on_scan_finished(self):
             if self.series_table.rowCount() == 0:
-                self.btn_run.setText("КТ-СЕРИИ НЕ НАЙДЕНЫ")
-                self.btn_run.setEnabled(False)
+                self.update_run_button(False, "КТ-СЕРИИ НЕ НАЙДЕНЫ")
             else:
                 if self.series_table.selectedItems():
                     self.on_series_selected()
                 else:
-                    self.btn_run.setText("ВЫБЕРИТЕ ПАЦИЕНТА В ТАБЛИЦЕ")
-                    self.btn_run.setEnabled(False)
+                    self.update_run_button(False, "ВЫБЕРИТЕ ПАЦИЕНТА В ТАБЛИЦЕ")
                 
         def on_series_selected(self):
             selected = self.series_table.selectedItems()
             if selected:
-                self.btn_run.setEnabled(True)
-                self.btn_run.setText("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ")
+                self.update_run_button(True, "ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ")
                 row = selected[0].row()
                 selected_path = self.series_table.item(row, 6).text()
                 self.check_for_rtstruct(selected_path)
