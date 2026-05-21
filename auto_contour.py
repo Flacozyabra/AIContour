@@ -273,7 +273,7 @@ if PYQT_AVAILABLE:
                 def is_canc():
                     return self.is_cancelled
 
-                self.engine.run_pipeline(
+                added, elapsed = self.engine.run_pipeline(
                     dicom_dir_path=self.dicom_dir,
                     output_dir_path=self.output_dir,
                     preset_name=self.preset_name,
@@ -292,7 +292,8 @@ if PYQT_AVAILABLE:
                 if self.is_cancelled:
                     self.finished_signal.emit(False, "Операция отменена пользователем.")
                 else:
-                    self.finished_signal.emit(True, "Автооконтурирование успешно завершено!")
+                    msg = f"Пайплайн успешно завершен! Добавлено структур: {added}. Общее время работы: {elapsed:.1f} сек."
+                    self.finished_signal.emit(True, msg)
             except Exception as e:
                 self.finished_signal.emit(False, str(e))
 
@@ -636,36 +637,6 @@ if PYQT_AVAILABLE:
             main_layout.setContentsMargins(15, 15, 15, 15)
             main_layout.setSpacing(10)
 
-            # Определение GPU/CPU для подзаголовка
-            gpu_available = self.engine.is_gpu_available()
-            device_str = "CUDA GPU доступна" if gpu_available else "Доступен только CPU"
-
-            # Шапка
-            header_widget = QWidget()
-            header_layout = QHBoxLayout(header_widget)
-            header_layout.setContentsMargins(0, 0, 0, 5)
-
-            title_layout = QVBoxLayout()
-            title_layout.setSpacing(2)
-            title = QLabel("AI Contour")
-            title.setObjectName("titleLabel")
-            self.subtitle_label = QLabel(f"Автоматическое сегментирование органов риска на КТ ({device_str})")
-            self.subtitle_label.setObjectName("subtitleLabel")
-            if gpu_available:
-                self.subtitle_label.setStyleSheet("color: #2ecc71;")
-            title_layout.addWidget(title)
-            title_layout.addWidget(self.subtitle_label)
-
-            btn_help = QPushButton("Справка и дисклеймер 📖")
-            btn_help.setObjectName("btnHelp")
-            btn_help.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_help.clicked.connect(self.show_help)
-
-            header_layout.addLayout(title_layout)
-            header_layout.addStretch()
-            header_layout.addWidget(btn_help)
-            main_layout.addWidget(header_widget)
-
             # Сплиттер
             splitter = QSplitter(Qt.Orientation.Horizontal)
             main_layout.addWidget(splitter, 1)
@@ -688,23 +659,7 @@ if PYQT_AVAILABLE:
             tab1_layout = QVBoxLayout(tab1_widget)
             tab1_layout.setSpacing(10)
 
-            # Выбор КТ DICOM
-            input_label = QLabel("Папка с КТ-снимками DICOM:")
-            input_label.setStyleSheet("font-weight: bold; color: #ffffff;")
-            self.input_edit = QLineEdit()
-            self.input_edit.setPlaceholderText("Выберите папку с DICOM файлами...")
-            self.input_edit.textChanged.connect(self.check_for_rtstruct)
-            self.btn_input = QPushButton("📂 Обзор...")
-            self.btn_input.setObjectName("btnBrowse")
-            self.btn_input.clicked.connect(self.select_input_dir)
-
-            input_box = QHBoxLayout()
-            input_box.addWidget(self.input_edit)
-            input_box.addWidget(self.btn_input)
-            tab1_layout.addWidget(input_label)
-            tab1_layout.addLayout(input_box)
-
-            # Под-карточка статуса RTSTRUCT
+            # Выбор пресета
             status_frame = QFrame()
             status_frame.setObjectName("statusCard")
             status_layout = QVBoxLayout(status_frame)
@@ -768,6 +723,24 @@ if PYQT_AVAILABLE:
             tab2_widget = QWidget()
             tab2_layout = QVBoxLayout(tab2_widget)
             tab2_layout.setSpacing(12)
+
+            # Группа 0: Выбор КТ DICOM (перенесено с главной)
+            input_group = QGroupBox("Папка с КТ-снимками DICOM")
+            input_group_layout = QVBoxLayout(input_group)
+            
+            self.input_edit = QLineEdit()
+            self.input_edit.setPlaceholderText("Выберите папку с DICOM файлами...")
+            self.input_edit.textChanged.connect(self.check_for_rtstruct)
+            self.btn_input = QPushButton("📂 Обзор...")
+            self.btn_input.setObjectName("btnBrowse")
+            self.btn_input.clicked.connect(self.select_input_dir)
+
+            input_box = QHBoxLayout()
+            input_box.addWidget(self.input_edit)
+            input_box.addWidget(self.btn_input)
+            input_group_layout.addLayout(input_box)
+            tab2_layout.addWidget(input_group)
+            gpu_available = self.engine.is_gpu_available()
 
             # Группа 1: Вычислительное устройство
             device_group = QGroupBox("Вычислительное устройство")
@@ -862,7 +835,14 @@ if PYQT_AVAILABLE:
             self.sound_check = QCheckBox("Звуковое оповещение при завершении 🔔")
             self.sound_check.setChecked(True)
             tab2_layout.addWidget(self.sound_check)
+            
             tab2_layout.addStretch()
+            
+            btn_help = QPushButton("Справка и дисклеймер 📖")
+            btn_help.setObjectName("btnHelp")
+            btn_help.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_help.clicked.connect(self.show_help)
+            tab2_layout.addWidget(btn_help)
 
             self.tab_widget.addTab(tab2_widget, "⚙️ Настройки")
 
@@ -874,14 +854,14 @@ if PYQT_AVAILABLE:
             right_layout = QVBoxLayout(right_card)
             right_layout.setSpacing(12)
 
-            logs_header = QLabel("Лог выполнения работы движка в реальном времени:")
+            logs_header = QLabel("Лог выполнения работы:")
             logs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.log_edit = QTextEdit()
             self.log_edit.setReadOnly(True)
             self.log_edit.setPlaceholderText("Здесь будет отображаться ход выполнения автооконтурирования...")
 
             # --- Таблица выбора серии DICOM ---
-            table_header = QLabel("Выбор пациента (результат сканирования):")
+            table_header = QLabel("Выбор пациента:")
             table_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.series_table = QTableWidget(0, 7)
             self.series_table.setHorizontalHeaderLabels(["ФИО", "ID пациента", "STR", "Область сканирования", "Число срезов", "Дата исследования", "Путь"])
@@ -1910,6 +1890,21 @@ if PYQT_AVAILABLE:
             if success:
                 self.progress_bar.setValue(100)
                 self.status_step_label.setText("Текущий шаг: Готово!")
+                
+                # Парсинг количества структур (из текста сообщения)
+                import re
+                count = 0
+                time_str = "0.0"
+                match_count = re.search(r'добавлено структур:\s*(\d+)', message.lower())
+                if match_count:
+                    count = match_count.group(1)
+                
+                match_time = re.search(r'время работы:\s*([\d\.]+)', message.lower())
+                if match_time:
+                    time_str = match_time.group(1)
+
+                final_log = f"[INFO]: Пайплайн успешно завершен! Добавлено структур: {count}. Общее время работы: {time_str} сек."
+                self.log_edit.appendHtml(f"<br><span style='background-color: #107c41; color: white; font-weight: bold; padding: 4px;'>{final_log}</span><br>")
                 QMessageBox.information(self, "Успех", "Автоматическое оконтурирование завершено успешно!")
             else:
                 self.progress_bar.setValue(0)

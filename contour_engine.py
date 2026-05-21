@@ -338,9 +338,10 @@ class ContourEngine:
         progress_callback: Optional[Callable[[int, str], None]] = None,
         is_cancelled_cb: Optional[Callable[[], bool]] = None,
         register_process_cb: Optional[Callable[[subprocess.Popen], None]] = None
-    ) -> None:
+    ) -> Tuple[int, float]:
         """
         Основной пайплайн выполнения автооконтурирования органов риска на КТ.
+        Возвращает кортеж: (количество добавленных структур, время выполнения в секундах).
         """
         start_time = time.time()
         dicom_dir = Path(dicom_dir_path).resolve()
@@ -361,6 +362,8 @@ class ContourEngine:
             self.verify_dicom_directory(dicom_dir)
             
             patient_id = "Unknown"
+            patient_name = "Unknown"
+            study_date = "Unknown"
             series_uid = "Unknown"
             try:
                 dicom_files = list(dicom_dir.glob("*.dcm")) + list(dicom_dir.glob("*.DCM"))
@@ -370,9 +373,12 @@ class ContourEngine:
                     ds = pydicom.dcmread(str(dicom_files[0]), stop_before_pixels=True)
                     patient_id = getattr(ds, "PatientID", "Unknown")
                     series_uid = getattr(ds, "SeriesInstanceUID", "Unknown")
-                    logger.info(f"Успешно считан PatientID: {patient_id}, SeriesInstanceUID: {series_uid}")
+                    raw_name = getattr(ds, "PatientName", "")
+                    patient_name = str(raw_name).replace("^", " ").strip() if raw_name else "Unknown"
+                    study_date = getattr(ds, "StudyDate", "Unknown")
+                    logger.info(f"Успешно считаны метаданные: {patient_name}, {patient_id}, {study_date}")
             except Exception as de:
-                logger.debug(f"Не удалось считать PatientID/SeriesInstanceUID из DICOM: {de}")
+                logger.debug(f"Не удалось считать метаданные из DICOM: {de}")
 
             # ----------------------------------------------------------------------
             # Шаг 1: Конвертация DICOM -> NIfTI
@@ -863,20 +869,42 @@ class ContourEngine:
             clean_patient_id = "".join([c for c in str(patient_id) if c.isalnum() or c in ("_", "-")]).strip()
             if not clean_patient_id:
                 clean_patient_id = "Unknown"
+                
+            clean_patient_name = "".join([c if c.isalnum() else "_" for c in str(patient_name)]).strip("_")
+            if not clean_patient_name:
+                clean_patient_name = "Unknown"
+                
+            clean_study_date = "".join([c for c in str(study_date) if c.isalnum()]).strip()
+            if not clean_study_date:
+                clean_study_date = "Unknown"
 
             if existing_rtstruct_path:
                 # Берем исходное имя существующего файла структур без изменений
                 rtstruct_filename = Path(existing_rtstruct_path).name
             else:
-                # Если файла нет, используем SeriesInstanceUID
-                uid = series_uid if series_uid != "Unknown" else clean_patient_id
-                rtstruct_filename = f"STR_{uid}.dcm"
+                # Именование по медицинскому стандарту
+                name_part = clean_patient_name if clean_patient_name != "Unknown" else series_uid
+                id_part = clean_patient_id if clean_patient_id != "Unknown" else series_uid
+                date_part = clean_study_date if clean_study_date != "Unknown" else series_uid
+                
+                import re
+                name_part = re.sub(r'_+', '_', name_part)
+                rtstruct_filename = f"STR_{name_part}_{id_part}_{date_part}.dcm"
 
             rtstruct_file_path = output_dir / rtstruct_filename
             
             rtstruct.save(str(rtstruct_file_path))
             logger.info(f"Шаг 5 успешно завершен за {time.time() - step_start:.2f} сек.")
+            elapsed_total = time.time() - start_time
             logger.info(f"Итоговый файл RTSTRUCT успешно записан: {rtstruct_file_path}")
+            
+            # Очистка временной папки
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as e:
+                logger.debug(f"Не удалось удалить временную папку {temp_dir}: {e}")
+                
+            return added_count, elapsed_total
             
         except Exception as e:
             logger.error(f"Сбой в пайплайне: {e}", exc_info=True)
