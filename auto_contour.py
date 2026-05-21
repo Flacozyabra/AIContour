@@ -720,17 +720,12 @@ if PYQT_AVAILABLE:
             organs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.organs_list = QListWidget()
             self.organs_list.itemChanged.connect(self.on_organ_item_changed)
-            self.organs_list.itemSelectionChanged.connect(self.on_organ_selection_changed)
 
             tab1_layout.addWidget(organs_header)
             tab1_layout.addWidget(self.organs_list)
             
-            # Кнопка индивидуальной настройки цвета выделенного органа
-            self.btn_color_pick = QPushButton("🎨 Выбрать индивидуальный цвет органа...")
-            self.btn_color_pick.setObjectName("btnAction")
-            self.btn_color_pick.setEnabled(False)
-            self.btn_color_pick.clicked.connect(self.pick_organ_color)
-            tab1_layout.addWidget(self.btn_color_pick)
+            # Двойной клик по элементу списка для выбора цвета
+            self.organs_list.itemDoubleClicked.connect(self.pick_organ_color)
             
             self.tab_widget.addTab(tab1_widget, "🎯 Контуры и снимки")
 
@@ -1763,17 +1758,7 @@ if PYQT_AVAILABLE:
                 self.organs_list.blockSignals(False)
 
         def on_organ_selection_changed(self):
-            """Слот изменения выделенной строки в списке."""
-            selected = self.organs_list.selectedItems()
-            if not selected:
-                self.btn_color_pick.setEnabled(False)
-                return
-            
-            organ_name = selected[0].data(Qt.ItemDataRole.UserRole)
-            if organ_name == "header":
-                self.btn_color_pick.setEnabled(False)
-            else:
-                self.btn_color_pick.setEnabled(True)
+            pass
 
         def pick_organ_color(self):
             """Открывает диалог выбора цвета для выделенного органа."""
@@ -2222,7 +2207,17 @@ if PYQT_AVAILABLE:
             dialog.exec()
 
         def closeEvent(self, event):
-            event.accept()
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self, 'Подтверждение выхода',
+                "Вы действительно хотите выйти из программы?\nЕсли идет оконтуривание, оно может быть прервано.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                event.accept()
+            else:
+                event.ignore()
 
 
 # ==============================================================================
@@ -2245,6 +2240,19 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+
+    # Защита от запуска второй копии программы (используем мьютекс Windows)
+    try:
+        import ctypes
+        mutex_name = "AIContourAppMutex_1.0"
+        mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+        last_error = ctypes.windll.kernel32.GetLastError()
+        if last_error == 183:  # ERROR_ALREADY_EXISTS
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(None, "Ошибка запуска", "Программа уже запущена!")
+            sys.exit(0)
+    except Exception:
+        pass
 
     # Иконка на QApplication охватывает все окна приложения
     icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_icon.png")
