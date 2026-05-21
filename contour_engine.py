@@ -887,7 +887,6 @@ class ContourEngine:
                 id_part = clean_patient_id if clean_patient_id != "Unknown" else series_uid
                 date_part = clean_study_date if clean_study_date != "Unknown" else series_uid
                 
-                import re
                 name_part = re.sub(r'_+', '_', name_part)
                 rtstruct_filename = f"STR_{name_part}_{id_part}_{date_part}.dcm"
 

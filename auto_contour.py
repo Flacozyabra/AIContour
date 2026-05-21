@@ -25,6 +25,7 @@ import time
 import math
 import argparse
 import logging
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -1905,7 +1906,6 @@ if PYQT_AVAILABLE:
                 self.status_step_label.setText("Текущий шаг: Готово!")
                 
                 # Парсинг количества структур (из текста сообщения)
-                import re
                 count = 0
                 time_str = "0.0"
                 match_count = re.search(r'добавлено структур:\s*(\d+)', message.lower())
