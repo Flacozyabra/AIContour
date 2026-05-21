@@ -59,14 +59,15 @@ ROI_TO_TASK_MAP = {
     'colon': 'total', 'small_bowel': 'total', 'femur_left': 'total',
     'femur_right': 'total', 'hip_left': 'total', 'hip_right': 'total',
     'sacrum': 'total', 'iliac_artery_left': 'total', 'iliac_artery_right': 'total',
+    'brain': 'total',
     
-    # Мозг (brain_structures)
-    'brain': 'brain_structures', 'brain_stem': 'brain_structures', 'brainstem': 'brain_structures',
+    # Мозг (brain_structures) - требует лицензии
+    'brain_stem': 'brain_structures', 'brainstem': 'brain_structures',
     
-    # Лицо / Орбиты (face)
-    'eye_left': 'face', 'eye_right': 'face', 
-    'lens_left': 'face', 'lens_right': 'face',
-    'optic_nerve_left': 'face', 'optic_nerve_right': 'face'
+    # Лицо / Орбиты (в нашей версии это head_glands_cavities)
+    'eye_left': 'head_glands_cavities', 'eye_right': 'head_glands_cavities', 
+    'lens_left': 'head_glands_cavities', 'lens_right': 'head_glands_cavities',
+    'optic_nerve_left': 'head_glands_cavities', 'optic_nerve_right': 'head_glands_cavities'
 }
 
 # Дефолтные настройки для автогенерации presets.json при его отсутствии
@@ -309,13 +310,8 @@ class ContourEngine:
         try:
             from totalsegmentator.map_to_binary import class_map
             supported = set()
-            if "total" in class_map:
-                supported.update(class_map["total"].values())
-            if "total_v1" in class_map:
-                supported.update(class_map["total_v1"].values())
-            if not supported:
-                for subset in class_map.values():
-                    supported.update(subset.values())
+            for subset in class_map.values():
+                supported.update(subset.values())
             return sorted(list(supported))
         except Exception as e:
             logger.warning(f"Не удалось получить список органов: {e}")
@@ -645,7 +641,13 @@ class ContourEngine:
                             
                 return_code = process.wait()
                 if return_code != 0:
-                    raise RuntimeError(f"Процесс TotalSegmentator (задача {task_name}) завершился с кодом ошибки {return_code}")
+                    logger.error(
+                        f"[ERROR]: Процесс TotalSegmentator для задачи '{task_name}' завершился с кодом ошибки {return_code}.\n"
+                        f"Возможная причина: отсутствие академической/коммерческой лицензии для этой суб-модели "
+                        f"(например, для 'brain_structures') или отсутствие установленного веса.\n"
+                        f"Пайплайн продолжит работу для остальных задач."
+                    )
+                    continue
                 
             logger.info(f"Шаг 2 успешно завершен за {time.time() - step_start:.2f} сек.")
 
