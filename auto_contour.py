@@ -20,6 +20,7 @@
 import os
 import sys
 import gc
+import shutil
 import time
 import math
 import argparse
@@ -35,7 +36,7 @@ try:
         QRadioButton, QButtonGroup, QTextEdit, QProgressBar, QFileDialog,
         QMessageBox, QFrame, QSplitter, QCheckBox, QDialog, QTextBrowser,
         QTabWidget, QColorDialog, QGroupBox,
-        QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+        QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMenu
     )
     from PyQt6.QtCore import QThread, pyqtSignal, Qt, QObject, QSettings, QTimer
     from PyQt6.QtGui import QTextCursor, QBrush, QColor, QFont, QIcon, QPixmap
@@ -122,7 +123,7 @@ if PYQT_AVAILABLE:
 
     class DicomScanWorker(QThread):
         """Фоновый поток для сканирования папок на наличие DICOM серий."""
-        series_found = pyqtSignal(str, str, str, str, str)  # name, id, body_part, date, path
+        series_found = pyqtSignal(str, str, str, str, int, str, str)  # name, id, str_status, body_part, slices, date, path
         finished_scan = pyqtSignal()
         error_signal = pyqtSignal(str)
 
@@ -147,6 +148,20 @@ if PYQT_AVAILABLE:
                     if not dcm_files:
                         continue
                         
+                    slice_count = len(dcm_files)
+                    has_rtstruct = False
+                    
+                    for dcm in dcm_files:
+                        if self.is_cancelled:
+                            break
+                        try:
+                            ds = pydicom.dcmread(str(Path(dirpath) / dcm), stop_before_pixels=True)
+                            if str(getattr(ds, 'Modality', '')) == 'RTSTRUCT':
+                                has_rtstruct = True
+                                break
+                        except Exception:
+                            pass
+
                     first_dcm = Path(dirpath) / dcm_files[0]
                     try:
                         ds = pydicom.dcmread(str(first_dcm), stop_before_pixels=True)
@@ -172,7 +187,8 @@ if PYQT_AVAILABLE:
                         elif not s_date:
                             s_date = "Нет даты"
                             
-                        self.series_found.emit(p_name, p_id, body_part, s_date, dirpath)
+                        str_status = "Yes" if has_rtstruct else "No"
+                        self.series_found.emit(p_name, p_id, str_status, body_part, slice_count, s_date, dirpath)
                     except Exception:
                         pass
                 self.finished_scan.emit()
@@ -837,13 +853,22 @@ if PYQT_AVAILABLE:
             # --- Таблица выбора серии DICOM ---
             table_header = QLabel("Выбор пациента (результат сканирования):")
             table_header.setStyleSheet("font-weight: bold; color: #ffffff;")
-            self.series_table = QTableWidget(0, 5)
-            self.series_table.setHorizontalHeaderLabels(["ФИО", "ID", "Область сканирования", "Дата исследования", "Путь"])
-            self.series_table.setColumnHidden(4, True) # Скрываем путь
-            self.series_table.setColumnWidth(3, 140)
+            self.series_table = QTableWidget(0, 7)
+            self.series_table.setHorizontalHeaderLabels(["ФИО", "ID пациента", "STR", "Область сканирования", "Число срезов", "Дата исследования", "Путь"])
+            self.series_table.setColumnHidden(6, True) # Скрываем путь
+            
             self.series_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            self.series_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+            self.series_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            self.series_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+            self.series_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+            self.series_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+            
             self.series_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
             self.series_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            self.series_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.series_table.customContextMenuRequested.connect(self.show_context_menu)
+            self.series_table.cellDoubleClicked.connect(self.on_table_double_clicked)
             self.series_table.setStyleSheet("""
                 QTableWidget {
                     background-color: #2d2d2d;
@@ -1136,7 +1161,7 @@ if PYQT_AVAILABLE:
             self.scan_worker.error_signal.connect(lambda e: logging.getLogger("ContourEngine").error(f"Ошибка сканирования: {e}"))
             self.scan_worker.start()
 
-        def on_series_found(self, p_name, p_id, body_part, s_date, path):
+        def on_series_found(self, p_name, p_id, str_status, body_part, slice_count, s_date, path):
             row = self.series_table.rowCount()
             self.series_table.insertRow(row)
             
@@ -1146,15 +1171,25 @@ if PYQT_AVAILABLE:
             item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.series_table.setItem(row, 1, item_id)
             
+            item_str = QTableWidgetItem(str_status)
+            item_str.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if str_status == "Yes":
+                item_str.setForeground(QBrush(QColor("#2ecc71")))
+            self.series_table.setItem(row, 2, item_str)
+            
             item_bp = QTableWidgetItem(body_part)
             item_bp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.series_table.setItem(row, 2, item_bp)
+            self.series_table.setItem(row, 3, item_bp)
+            
+            item_slices = QTableWidgetItem(str(slice_count))
+            item_slices.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.series_table.setItem(row, 4, item_slices)
             
             item_date = QTableWidgetItem(s_date)
             item_date.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.series_table.setItem(row, 3, item_date)
+            self.series_table.setItem(row, 5, item_date)
             
-            self.series_table.setItem(row, 4, QTableWidgetItem(path))
+            self.series_table.setItem(row, 6, QTableWidgetItem(path))
             
         def on_scan_finished(self):
             if self.series_table.rowCount() == 0:
@@ -1168,8 +1203,46 @@ if PYQT_AVAILABLE:
                 self.btn_run.setEnabled(True)
                 self.btn_run.setText("ЗАПУСТИТЬ АВТООКОНТУРИРОВАНИЕ")
                 row = selected[0].row()
-                selected_path = self.series_table.item(row, 4).text()
+                selected_path = self.series_table.item(row, 6).text()
                 self.check_for_rtstruct(selected_path)
+
+        def on_table_double_clicked(self, row, col):
+            path = self.series_table.item(row, 6).text()
+            if path and os.path.exists(path):
+                try:
+                    os.startfile(os.path.normpath(path))
+                except Exception as e:
+                    logger.error(f"Не удалось открыть папку: {e}")
+
+        def show_context_menu(self, position):
+            selected = self.series_table.selectedItems()
+            if not selected:
+                return
+            
+            row = selected[0].row()
+            path = self.series_table.item(row, 6).text()
+            
+            menu = QMenu(self.series_table)
+            delete_action = menu.addAction("Удалить")
+            
+            action = menu.exec(self.series_table.viewport().mapToGlobal(position))
+            if action == delete_action:
+                reply = QMessageBox.question(
+                    self,
+                    "Удаление исследования",
+                    "Вы уверены, что хотите безвозвратно удалить папку этого исследования с диска?\n\n" + path,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    try:
+                        import shutil
+                        shutil.rmtree(path)
+                        self.series_table.removeRow(row)
+                        logger.info(f"Папка {path} безвозвратно удалена.")
+                    except Exception as e:
+                        QMessageBox.critical(self, "Ошибка удаления", f"Не удалось удалить папку:\n{e}")
+                        logger.error(f"Ошибка удаления: {e}")
 
         def check_for_rtstruct(self, directory: str):
             """Автоматически сканирует папку КТ на наличие существующего RTSTRUCT файла."""
@@ -1509,7 +1582,7 @@ if PYQT_AVAILABLE:
                 return
                 
             row = selected[0].row()
-            dicom_dir = self.series_table.item(row, 4).text()
+            dicom_dir = self.series_table.item(row, 6).text()
 
             if not dicom_dir or not os.path.isdir(dicom_dir):
                 QMessageBox.critical(self, "Ошибка", "Путь к DICOM-серии недействителен!")
