@@ -607,9 +607,11 @@ class ContourEngine:
                     cmd.extend(["--task", task_name])
                 
                 if task_rois and precision_mode != "faster":
-                    cmd.append("--roi_subset")
-                    cmd.extend(task_rois)
-                    
+                    if task_name == "total":
+                        cmd.append("--roi_subset")
+                        cmd.extend(task_rois)
+                    else:
+                        logger.info(f"Флаг --roi_subset пропущен для задачи {task_name}, так как он поддерживается только для задачи 'total'. Будут сгенерированы все органы суб-модели (лишнее отсеется при сборке).")
                 logger.info(f"Запуск внешнего процесса TotalSegmentator (Task: {task_name}): {' '.join(cmd)}")
                 
                 startupinfo = None
