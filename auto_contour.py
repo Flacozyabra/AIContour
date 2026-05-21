@@ -493,9 +493,69 @@ if PYQT_AVAILABLE:
         border-radius: 4px;
     }
 
+    QListWidget::indicator {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #666666;
+        border-radius: 4px;
+        background-color: #242424;
+    }
+
+    QListWidget::indicator:hover {
+        border-color: #007acc;
+        background-color: #2d2d2d;
+    }
+
+    QListWidget::indicator:checked {
+        border-color: #007acc;
+        background-color: #007acc;
+        image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik05IDE2LjJMNC44IDEybC0xLjQgMS40TDkgMTkgMjEgN2wtMS40LTEuNEw5IDE2LjJ6IiBmaWxsPSIjZmZmZmZmIi8+PC9zdmc+");
+    }
+
+    QListWidget::indicator:disabled {
+        border-color: #444444;
+        background-color: #1e1e1e;
+    }
+
+    QListWidget::indicator:checked:disabled {
+        border-color: #444444;
+        background-color: #444444;
+        image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik05IDE2LjJMNC44IDEybC0xLjQgMS40TDkgMTkgMjEgN2wtMS40LTEuNEw5IDE2LjJ6IiBmaWxsPSIjYWFhYWFhIi8+PC9zdmc+");
+    }
+
     QRadioButton {
         spacing: 8px;
         color: #d0d0d0;
+    }
+
+    QRadioButton::indicator {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #666666;
+        border-radius: 8px;
+        background-color: #242424;
+    }
+
+    QRadioButton::indicator:hover {
+        border-color: #007acc;
+        background-color: #2d2d2d;
+    }
+
+    QRadioButton::indicator:checked {
+        border-color: #007acc;
+        background-color: #242424;
+        image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI1IiBmaWxsPSIjMDA3YWNjIi8+PC9zdmc+");
+    }
+
+    QRadioButton::indicator:disabled {
+        border-color: #444444;
+        background-color: #1e1e1e;
+    }
+
+    QRadioButton::indicator:checked:disabled {
+        border-color: #444444;
+        background-color: #1e1e1e;
+        image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI1IiBmaWxsPSIjNjY2NjY2Ii8+PC9zdmc+");
     }
 
     QRadioButton::disabled {
