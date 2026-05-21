@@ -218,6 +218,7 @@ if PYQT_AVAILABLE:
         """Поток для вычислений сегментации TotalSegmentator, чтобы GUI не зависал."""
         finished_signal = pyqtSignal(bool, str)
         step_signal = pyqtSignal(str)
+        progress_signal = pyqtSignal(int)
 
         def __init__(
             self,
@@ -262,6 +263,10 @@ if PYQT_AVAILABLE:
                 def callback(step_text: str):
                     self.step_signal.emit(step_text)
                     
+                def prog_callback(val: int, text: str):
+                    self.progress_signal.emit(val)
+                    self.step_signal.emit(text)
+                    
                 def reg_proc(p):
                     self.process = p
                     
@@ -280,6 +285,7 @@ if PYQT_AVAILABLE:
                     remove_blobs=self.remove_blobs,
                     smoothing_sigma=self.smoothing_sigma,
                     step_callback=callback,
+                    progress_callback=prog_callback,
                     is_cancelled_cb=is_canc,
                     register_process_cb=reg_proc
                 )
@@ -1767,6 +1773,7 @@ if PYQT_AVAILABLE:
             # Блокируем интерфейс
             self.set_ui_enabled(False)
             self.log_edit.clear()
+            self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
             self.scan_timer.stop()
             
@@ -1807,6 +1814,7 @@ if PYQT_AVAILABLE:
             )
             self.worker.finished_signal.connect(self.on_segmentation_finished)
             self.worker.step_signal.connect(self.on_step_changed)
+            self.worker.progress_signal.connect(self.progress_bar.setValue)
             
             self.current_step_base_text = "Подготовка пайплайна..."
             self.spinner_index = 0
@@ -1916,18 +1924,6 @@ if PYQT_AVAILABLE:
         def on_step_changed(self, step_text: str):
             self.current_step_base_text = step_text
             self.status_step_label.setText(f"{step_text} {self.SPINNER_FRAMES[self.spinner_index]}")
-            
-            if "Шаг 1" in step_text or "Шаг 2" in step_text:
-                self.progress_bar.setRange(0, 0)
-            elif "Шаг 3" in step_text:
-                self.progress_bar.setRange(0, 100)
-                self.progress_bar.setValue(75)
-            elif "Шаг 4" in step_text:
-                self.progress_bar.setRange(0, 100)
-                self.progress_bar.setValue(90)
-            elif "Шаг 5" in step_text:
-                self.progress_bar.setRange(0, 100)
-                self.progress_bar.setValue(100)
 
         def show_help(self):
             dialog = QDialog(self)

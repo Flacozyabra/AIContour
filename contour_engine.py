@@ -23,6 +23,7 @@ import json
 import time
 import shutil
 import logging
+import re
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Callable, Tuple
@@ -334,6 +335,7 @@ class ContourEngine:
         remove_blobs: bool = False,
         smoothing_sigma: float = 0.0,
         step_callback: Optional[Callable[[str], None]] = None,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
         is_cancelled_cb: Optional[Callable[[], bool]] = None,
         register_process_cb: Optional[Callable[[subprocess.Popen], None]] = None
     ) -> None:
@@ -377,6 +379,8 @@ class ContourEngine:
             # ----------------------------------------------------------------------
             if step_callback:
                 step_callback("Шаг 1 из 5: Конвертация DICOM в NIfTI...")
+            if progress_callback:
+                progress_callback(2, "Шаг 1/5: Сборка 3D-тома NIfTI...")
             logger.info("--- Шаг 1 из 5: Конвертация DICOM в 3D NIfTI объем ---")
             
             d2n_settings.disable_validate_slice_increment()
@@ -398,7 +402,7 @@ class ContourEngine:
             # Шаг 2: ИИ-сегментация через TotalSegmentator
             # ----------------------------------------------------------------------
             if step_callback:
-                step_callback("Шаг 2 из 5: ИИ сегментирует органы на CPU (это займет 2-4 минуты)...")
+                step_callback("Шаг 2 из 5: ИИ сегментирует органы...")
             logger.info("--- Шаг 2 из 5: ИИ-сегментация с помощью TotalSegmentator ---")
             
             step_start = time.time()
@@ -530,6 +534,9 @@ class ContourEngine:
             if register_process_cb:
                 register_process_cb(process)
                 
+            current_loop_index = 0
+            last_percent = 0
+                
             # Чтение вывода в реальном времени с поддержкой мгновенной отмены
             while True:
                 if is_cancelled_cb and is_cancelled_cb():
@@ -545,6 +552,21 @@ class ContourEngine:
                     clean_line = line.strip()
                     if clean_line:
                         logger.info(f"[TotalSegmentator]: {clean_line}")
+                        
+                        if progress_callback:
+                            match = re.search(r'(\d+)%\|', clean_line)
+                            if match:
+                                sub_percent = int(match.group(1))
+                                if sub_percent == 0 and last_percent == 100:
+                                    current_loop_index += 1
+                                last_percent = sub_percent
+                                
+                                global_ai_percent = 5 + int(((current_loop_index * 100) + sub_percent) / 500 * 90)
+                                if current_loop_index == 0:
+                                    txt = "Шаг 2/5: ИИ определяет границы тела (Локализация)..."
+                                else:
+                                    txt = f"Шаг 2/5: ИИ оконтуривает структуры. Расчет части {current_loop_index} из 4..."
+                                progress_callback(global_ai_percent, txt)
                         
             return_code = process.wait()
             if return_code != 0:
@@ -738,8 +760,12 @@ class ContourEngine:
                     for k, v in item.items():
                         organ_to_aliases[k] = v
             
-            for mask_file in mask_files:
+            for idx, mask_file in enumerate(mask_files):
                 organ_name = mask_file.name.replace(".nii.gz", "")
+                
+                if progress_callback:
+                    prog = 95 + int((idx / len(mask_files)) * 5)
+                    progress_callback(prog, f"Шаг 4/5: Сглаживание и фильтрация ROI {organ_name}...")
                 
                 # Фильтруем по списку целевых органов (если это не сверхбыстрый режим body, где ищется всё тело)
                 if precision_mode != "faster" and target_organs and organ_name not in target_organs:
