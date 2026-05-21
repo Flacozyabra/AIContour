@@ -369,16 +369,23 @@ class ContourEngine:
                 dicom_files = list(dicom_dir.glob("*.dcm")) + list(dicom_dir.glob("*.DCM"))
                 if not dicom_files:
                     dicom_files = [f for f in dicom_dir.iterdir() if f.is_file() and not f.name.startswith('.')]
-                if dicom_files:
-                    ds = pydicom.dcmread(str(dicom_files[0]), stop_before_pixels=True)
-                    patient_id = getattr(ds, "PatientID", "Unknown")
-                    series_uid = getattr(ds, "SeriesInstanceUID", "Unknown")
-                    raw_name = getattr(ds, "PatientName", "")
-                    patient_name = str(raw_name).replace("^", " ").strip() if raw_name else "Unknown"
-                    study_date = getattr(ds, "StudyDate", "Unknown")
-                    logger.info(f"Успешно считаны метаданные: {patient_name}, {patient_id}, {study_date}")
+                
+                for dcm_path in dicom_files:
+                    try:
+                        ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True)
+                        patient_id = getattr(ds, "PatientID", "Unknown")
+                        series_uid = getattr(ds, "SeriesInstanceUID", "Unknown")
+                        raw_name = getattr(ds, "PatientName", "")
+                        patient_name = str(raw_name).replace("^", " ").strip() if raw_name else "Unknown"
+                        study_date = getattr(ds, "StudyDate", "Unknown")
+                        
+                        if patient_id != "Unknown" or patient_name != "Unknown":
+                            logger.info(f"Успешно считаны метаданные: {patient_name}, {patient_id}, {study_date}")
+                            break
+                    except Exception:
+                        continue
             except Exception as de:
-                logger.debug(f"Не удалось считать метаданные из DICOM: {de}")
+                logger.debug(f"Не удалось получить список DICOM файлов для метаданных: {de}")
 
             # ----------------------------------------------------------------------
             # Шаг 1: Конвертация DICOM -> NIfTI
