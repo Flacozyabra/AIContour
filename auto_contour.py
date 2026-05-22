@@ -837,12 +837,12 @@ if PYQT_AVAILABLE:
             tab1_layout.addLayout(selection_layout)
 
             # Список OAR с чек-боксами
-            organs_header = QLabel("Органы для автооконтурирования:")
-            organs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
+            self.organs_header = QLabel("Органы для автооконтурирования: 0 из 0")
+            self.organs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.organs_list = QListWidget()
             self.organs_list.itemChanged.connect(self.on_organ_item_changed)
 
-            tab1_layout.addWidget(organs_header)
+            tab1_layout.addWidget(self.organs_header)
             tab1_layout.addWidget(self.organs_list)
             
             # Двойной клик по элементу списка для выбора цвета
@@ -1404,7 +1404,7 @@ if PYQT_AVAILABLE:
             placed_organs = set()
 
             for group_title, organs in ORGAN_GROUPS.items():
-                header_item = QListWidgetItem(group_title)
+                header_item = QListWidgetItem(f"{group_title} ({len(organs)})")
                 header_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
                 header_item.setCheckState(Qt.CheckState.Unchecked)
                 header_item.setData(Qt.ItemDataRole.UserRole, "header")
@@ -1430,10 +1430,17 @@ if PYQT_AVAILABLE:
                     
                     self.organs_list.addItem(item)
             
-            # Добавляем оставшиеся органы (total) в отдельную группу
-            other_organs = [org for org in all_supported_organs if org not in placed_organs]
+            # Исключаем дубликаты с похожими названиями, чтобы они не засоряли раздел "Остальное"
+            duplicates_to_exclude = {
+                "brainstem", "eye_lens_left", "eye_lens_right", "iliac_vena_left", "iliac_vena_right",
+                "lung_upper_lobe_left", "lung_lower_lobe_left", "lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right",
+                "kidney_cyst_left", "kidney_cyst_right", "thalamus", "caudate_nucleus", "lentiform_nucleus", "ventricle",
+                "heart_myocardium", "heart_atrium_left", "heart_atrium_right", "heart_ventricle_left", "heart_ventricle_right"
+            }
+            other_organs = [org for org in all_supported_organs if org not in placed_organs and org not in duplicates_to_exclude]
+            
             if other_organs:
-                other_header = QListWidgetItem("━━━ ОСТАЛЬНОЕ ━━━")
+                other_header = QListWidgetItem(f"━━━ ОСТАЛЬНОЕ ━━━ ({len(other_organs)})")
                 other_header.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
                 other_header.setCheckState(Qt.CheckState.Unchecked)
                 other_header.setData(Qt.ItemDataRole.UserRole, "header")
@@ -1454,6 +1461,7 @@ if PYQT_AVAILABLE:
                     self.organs_list.addItem(item)
 
             self.is_updating_presets = False
+            self.update_checked_organs_count()
 
         def update_item_color_icon(self, item: QListWidgetItem, organ_name: str):
             """Генерирует и устанавливает цветную иконку для органа в списке."""
@@ -1542,6 +1550,7 @@ if PYQT_AVAILABLE:
                 if input_dir and os.path.isdir(input_dir):
                     self.start_dicom_scan(input_dir, is_manual=True)
                     self.scan_timer.start()
+                self.update_checked_organs_count()
 
         def save_settings(self):
             """Сохраняет состояние интерфейса в QSettings."""
@@ -2050,6 +2059,7 @@ if PYQT_AVAILABLE:
                     self._sync_preset_combo_to_organs()
                     self.organs_list.blockSignals(False)
                     self.is_updating_presets = False
+                    self.update_checked_organs_count()
                     self._last_loaded_rtstruct = rtstruct_path
 
                 # Собираем отмеченные органы для фильтрации вьюера
@@ -2252,6 +2262,7 @@ if PYQT_AVAILABLE:
             self.preset_combo.blockSignals(False)
             
             self.save_settings()
+            self.update_checked_organs_count()
 
         def deselect_all_organs(self):
             """Снимает выбор со всех органов в списке."""
@@ -2269,6 +2280,7 @@ if PYQT_AVAILABLE:
             self.preset_combo.blockSignals(False)
             
             self.save_settings()
+            self.update_checked_organs_count()
 
         def _sync_preset_combo_to_organs(self):
             """Подбирает и устанавливает в комбобоксе пресет, соответствующий текущим выбранным органам.
@@ -2337,6 +2349,7 @@ if PYQT_AVAILABLE:
 
             # После обновления органов — пересчитываем состояния заголовков групп
             self.update_headers_check_states()
+            self.update_checked_organs_count()
 
         def update_headers_check_states(self):
             """Обновляет состояния чекбоксов заголовков на основе состояния дочерних органов."""
@@ -2370,6 +2383,21 @@ if PYQT_AVAILABLE:
                 header_item.setCheckState(Qt.CheckState.Unchecked)
             else:
                 header_item.setCheckState(Qt.CheckState.PartiallyChecked)
+
+        def update_checked_organs_count(self):
+            """Подсчитывает отмеченные органы и обновляет надпись organs_header."""
+            if not hasattr(self, 'organs_header'):
+                return
+            total = 0
+            checked = 0
+            for i in range(self.organs_list.count()):
+                item = self.organs_list.item(i)
+                data = item.data(Qt.ItemDataRole.UserRole)
+                if data and data != "header":
+                    total += 1
+                    if item.checkState() == Qt.CheckState.Checked:
+                        checked += 1
+            self.organs_header.setText(f"Органы для автооконтурирования: {checked} из {total}")
 
         def on_preset_changed(self, index: int):
             """Слот изменения выбранного пресета (вызывается при каждом выборе из списка)."""
@@ -2452,6 +2480,8 @@ if PYQT_AVAILABLE:
                 # Если включен показ структур, перерисуем их
                 if hasattr(self, 'chk_show_structures') and self.chk_show_structures.isChecked():
                     self.on_show_structures_changed()
+                
+                self.update_checked_organs_count()
                 
             except Exception as e:
                 import traceback

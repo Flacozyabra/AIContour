@@ -579,8 +579,10 @@ class ContourEngine:
         try:
             from totalsegmentator.map_to_binary import class_map
             supported = set()
-            for subset in class_map.values():
-                supported.update(subset.values())
+            allowed_tasks = ['total', 'total_v1', 'brain_structures', 'head_glands_cavities', 'face']
+            for task in allowed_tasks:
+                if task in class_map:
+                    supported.update(class_map[task].values())
             return sorted(list(supported))
         except Exception as e:
             logger.warning(f"Не удалось получить список органов: {e}")
