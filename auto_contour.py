@@ -1422,7 +1422,26 @@ if PYQT_AVAILABLE:
                 "kidney_cyst_left", "kidney_cyst_right", "thalamus", "caudate_nucleus", "lentiform_nucleus", "ventricle",
                 "heart_myocardium", "heart_atrium_left", "heart_atrium_right", "heart_ventricle_left", "heart_ventricle_right"
             }
-            other_organs = [org for org in all_supported_organs if org not in placed_organs and org not in duplicates_to_exclude]
+
+            # Функция фильтрации: оставляем только ребра, позвонки (C1-L5) и глубокие мышцы
+            def is_allowed_other(org):
+                if org.startswith("rib_"):
+                    return True
+                if org.startswith("vertebrae_"):
+                    m = re.match(r"^vertebrae_([cCtTlL])(\d+)$", org)
+                    if m:
+                        return True
+                    return False
+                if org in ["autochthon_left", "autochthon_right", "iliopsoas_left", "iliopsoas_right"]:
+                    return True
+                return False
+
+            other_organs = [
+                org for org in all_supported_organs 
+                if org not in placed_organs 
+                and org not in duplicates_to_exclude 
+                and is_allowed_other(org)
+            ]
             
             if other_organs:
                 other_header = QListWidgetItem(f"━━━ ОСТАЛЬНОЕ ━━━ ({len(other_organs)})")
@@ -1489,7 +1508,7 @@ if PYQT_AVAILABLE:
                 smoothing_idx = self.settings.value("smoothing_idx", 1, type=int)
                 self.smoothing_combo.setCurrentIndex(smoothing_idx)
 
-                color_preset = self.settings.value("color_preset", "Классический AI Contour")
+                color_preset = self.settings.value("color_preset", "QUANTEC")
                 self.color_preset_combo.setCurrentText(color_preset)
 
                 play_sound = self.settings.value("play_sound", True, type=bool)
@@ -1872,6 +1891,11 @@ if PYQT_AVAILABLE:
         def check_for_rtstruct(self, directory: str):
             """Находит все RTSTRUCT файлы в выбранной папке."""
             self.existing_rtstruct_path = None
+            self._last_loaded_rtstruct = None
+            self._loaded_roi_masks = {}
+            self._cached_rtstruct = None
+            self._cached_rtstruct_path = None
+            
             if hasattr(self, 'rtstruct_combo'):
                 self.rtstruct_combo.blockSignals(True)
                 self.rtstruct_combo.clear()
@@ -1937,7 +1961,7 @@ if PYQT_AVAILABLE:
                 return
                 
             if not getattr(self, 'chk_show_structures', None) or not self.chk_show_structures.isChecked():
-                self._last_loaded_rtstruct = None
+                # Не сбрасываем _last_loaded_rtstruct, чтобы кэш сохранялся при простом скрытии/показе
                 return
                 
             rtstruct_path = self.rtstruct_combo.currentData()
@@ -1946,33 +1970,33 @@ if PYQT_AVAILABLE:
             
             is_new_rtstruct = (getattr(self, "_last_loaded_rtstruct", None) != rtstruct_path)
             
+            # Инициализируем кэш масок лениво
+            if not hasattr(self, "_loaded_roi_masks") or is_new_rtstruct:
+                self._loaded_roi_masks = {}
+                self._cached_rtstruct = None
+                self._cached_rtstruct_path = None
+            
             progress_dialog = None
             try:
-                # Устанавливаем форму курсора WaitCursor и выводим красивый статус
-                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-                self.status_step_label.setText("⏳ Подготовка 3D-сцены: чтение DICOM RTSTRUCT файла...")
-                QApplication.processEvents()
+                # Избегаем повторного тяжелого парсинга RTSTRUCT с диска
+                if not getattr(self, "_cached_rtstruct", None) or getattr(self, "_cached_rtstruct_path", None) != rtstruct_path:
+                    # Устанавливаем WaitCursor только при реальном чтении файла с диска
+                    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                    self.status_step_label.setText("⏳ Подготовка 3D-сцены: чтение DICOM RTSTRUCT файла...")
+                    QApplication.processEvents()
+                    
+                    from rt_utils import RTStructBuilder
+                    self._cached_rtstruct = RTStructBuilder.create_from(
+                        dicom_series_path=self.current_dicom_dir,
+                        rt_struct_path=rtstruct_path,
+                        warn_only=True
+                    )
+                    self._cached_rtstruct_path = rtstruct_path
+                    QApplication.restoreOverrideCursor()
                 
-                from rt_utils import RTStructBuilder
-                
-                rtstruct = RTStructBuilder.create_from(
-                    dicom_series_path=self.current_dicom_dir,
-                    rt_struct_path=rtstruct_path,
-                    warn_only=True
-                )
+                rtstruct = self._cached_rtstruct
                 roi_names = rtstruct.get_roi_names()
                 total_rois = len(roi_names)
-                
-                # Создаем красивое модальное окно прогресса
-                progress_dialog = QProgressDialog("⏳ Инициализация 3D-структур...", None, 0, total_rois, self)
-                progress_dialog.setWindowTitle("Загрузка 3D-контуров")
-                progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-                progress_dialog.setMinimumDuration(0)
-                progress_dialog.setCancelButton(None)
-                progress_dialog.setStyleSheet(self.styleSheet())
-                progress_dialog.setValue(0)
-                progress_dialog.show()
-                QApplication.processEvents()
                 
                 # Умное нечеткое сопоставление (Fuzzy Matching) OAR
                 normalize_name = lambda n: re.sub(r'[^a-z0-9]', '', n.lower())
@@ -2039,37 +2063,62 @@ if PYQT_AVAILABLE:
                 if not checked_organs.intersection(file_organs_no_body):
                     checked_organs = file_organs_no_body
                 
+                # Фильтруем список структур, которые реально будем отрисовывать
+                rois_to_draw = []
+                for roi in roi_names:
+                    orig_organ = get_mapped_organ(roi)
+                    if orig_organ == "body" or orig_organ in checked_organs:
+                        rois_to_draw.append((roi, orig_organ))
+
+                # Проверяем, все ли нужные маски уже есть в кэше оперативной памяти
+                all_cached = all(roi in self._loaded_roi_masks for roi, _ in rois_to_draw)
+
+                if not all_cached:
+                    # Устанавливаем WaitCursor и показываем прогресс-диалог только при реальных расчетах масок
+                    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                    
+                    # Создаем красивое модальное окно прогресса
+                    progress_dialog = QProgressDialog("⏳ Инициализация 3D-структур...", None, 0, len(rois_to_draw), self)
+                    progress_dialog.setWindowTitle("Загрузка 3D-контуров")
+                    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+                    progress_dialog.setMinimumDuration(0)
+                    progress_dialog.setCancelButton(None)
+                    progress_dialog.setStyleSheet(self.styleSheet())
+                    progress_dialog.setValue(0)
+                    progress_dialog.show()
+                    QApplication.processEvents()
+
                 z_dim, x_dim, y_dim = self.volume_3d_base.shape
                 overlay_3d = np.zeros((z_dim, x_dim, y_dim, 4), dtype=np.uint8)
                 
-                for idx, roi in enumerate(roi_names, start=1):
+                for idx, (roi, orig_organ) in enumerate(rois_to_draw, start=1):
                     try:
-                        orig_organ = get_mapped_organ(roi)
-                        
                         # Получаем красивое русское название органа для пошагового вывода
                         ru_name = self.engine.ru_names.get(orig_organ, orig_organ)
                         if orig_organ == "body":
                             ru_name = "Контур тела (Body)"
                         
-                        # Обновляем прогресс
-                        if progress_dialog:
-                            progress_dialog.setValue(idx)
-                            progress_dialog.setLabelText(f"⏳ Отрисовка контуров: {ru_name} ({idx}/{total_rois})...")
-                        self.status_step_label.setText(f"⏳ Отрисовка контуров: {ru_name} ({idx}/{total_rois})...")
-                        QApplication.processEvents()
+                        # Обновляем прогресс, только если идет реальный расчет
+                        if not all_cached:
+                            if progress_dialog:
+                                progress_dialog.setValue(idx)
+                                progress_dialog.setLabelText(f"⏳ Отрисовка контуров: {ru_name} ({idx}/{len(rois_to_draw)})...")
+                            self.status_step_label.setText(f"⏳ Отрисовка контуров: {ru_name} ({idx}/{len(rois_to_draw)})...")
+                            QApplication.processEvents()
                         
-                        if orig_organ != "body" and orig_organ not in checked_organs:
-                            continue
-                        
-                        # Используем безопасный slice-by-slice экстрактор вместо get_roi_mask_by_name,
-                        # чтобы не падать при вырожденных контурах (Skull, Eye Right и др.)
-                        mask_3d = self._get_roi_mask_safe(
-                            rtstruct, roi,
-                            self.volume_3d_base.shape,
-                            getattr(self, 'z_positions', None),
-                            getattr(self, 'dicom_pixel_spacing', (1.0, 1.0)),
-                            getattr(self, 'dicom_image_position', [0.0, 0.0])
-                        )   # возвращает (z, x, y) bool array
+                        # Извлекаем маску: либо из кэша (мгновенно), либо рассчитываем с диска (один раз)
+                        if roi in self._loaded_roi_masks:
+                            mask_3d = self._loaded_roi_masks[roi]
+                        else:
+                            # Безопасный slice-by-slice экстрактор маски
+                            mask_3d = self._get_roi_mask_safe(
+                                rtstruct, roi,
+                                self.volume_3d_base.shape,
+                                getattr(self, 'z_positions', None),
+                                getattr(self, 'dicom_pixel_spacing', (1.0, 1.0)),
+                                getattr(self, 'dicom_image_position', [0.0, 0.0])
+                            )   # возвращает (z, x, y) bool array
+                            self._loaded_roi_masks[roi] = mask_3d
                         
                         if orig_organ == "body":
                             import scipy.ndimage
@@ -2095,14 +2144,16 @@ if PYQT_AVAILABLE:
                 self.dicom_viewer.getView().addItem(self.roi_overlay_item)
                 
                 self.update_roi_overlay_frame()
-                self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
+                if not all_cached:
+                    self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
             except Exception as e:
                 logger.error(f"Ошибка загрузки структур во вьюер: {e}")
                 self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
             finally:
                 if progress_dialog:
                     progress_dialog.close()
-                QApplication.restoreOverrideCursor()
+                if not all_cached:
+                    QApplication.restoreOverrideCursor()
 
         def _get_roi_mask_safe(
             self,
@@ -2528,6 +2579,10 @@ if PYQT_AVAILABLE:
                             self.update_item_color_icon(itm, org)
                 finally:
                     self.structures_list.blockSignals(False)
+                
+                # Если включен показ структур, перерисуем их с новыми цветами пресета
+                if hasattr(self, 'chk_show_structures') and self.chk_show_structures.isChecked():
+                    self.on_show_structures_changed()
                 
                 logger.info(f"Цветовая гамма переключена на пресет: '{text}'")
 
