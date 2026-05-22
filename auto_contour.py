@@ -56,6 +56,13 @@ except ImportError:
     # На случай запуска без движка
     ContourEngine = None
 
+# Импортируем конфигурационные данные
+try:
+    from config import ORGAN_GROUPS, EXTERNAL_ALIASES
+except ImportError:
+    ORGAN_GROUPS = {}
+    EXTERNAL_ALIASES = {}
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -982,7 +989,7 @@ if PYQT_AVAILABLE:
             self.color_preset_combo = QComboBox()
             self.color_preset_combo.addItems([
                 "Классический AI Contour",
-                "Клинический QUANTEC",
+                "QUANTEC",
                 "Яркий неоновый"
             ])
             self.color_preset_combo.currentTextChanged.connect(self.on_color_preset_changed)
@@ -1332,8 +1339,15 @@ if PYQT_AVAILABLE:
             splitter.setStretchFactor(0, 0)
             splitter.setStretchFactor(1, 1)
 
+            # Псевдонимы для совместимости с требованиями ТЗ
+            self.palette_combo = self.color_preset_combo
+            self.structures_list = self.organs_list
+
             # Инициализация списков пресетов и органов из presets.json движка
             self.init_presets_and_organs()
+
+            # Установка палитры по умолчанию на QUANTEC
+            self.palette_combo.setCurrentText("QUANTEC")
 
             # Подключаем сохранение настроек
             self.sound_check.stateChanged.connect(self.on_sound_check_changed)
@@ -1368,36 +1382,7 @@ if PYQT_AVAILABLE:
             self.preset_combo.addItem("Все органы (All)")
             self.preset_combo.addItem("Пользовательский (Custom)")
 
-            # Группировка списка органов по анатомическим областям
-            ORGAN_GROUPS = {
-                "━━━ ГОЛОВА И ШЕЯ ━━━": [
-                    "eye_left", "eye_right", "lens_left", "lens_right", "optic_nerve_left", "optic_nerve_right",
-                    "spinal_cord", "thyroid_gland", "skull", "common_carotid_artery_left", "common_carotid_artery_right",
-                    "parotid_gland_left", "parotid_gland_right", "submandibular_gland_left", "submandibular_gland_right",
-                    "nasal_cavity_left", "nasal_cavity_right", "nasopharynx", "oropharynx", "hypopharynx",
-                    "soft_palate", "hard_palate", "auditory_canal_left", "auditory_canal_right"
-                ],
-                "━━━ ГРУДНАЯ КЛЕТКА ━━━": [
-                    "heart", "lung_left", "lung_right", "trachea", "esophagus", "aorta", "pulmonary_artery",
-                    "superior_vena_cava", "sternum", "clavicula_left", "clavicula_right",
-                    "scapula_left", "scapula_right", "humerus_left", "humerus_right"
-                ],
-                "━━━ БРЮШНАЯ ПОЛОСТЬ ━━━": [
-                    "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "pancreas", "duodenum",
-                    "adrenal_gland_left", "adrenal_gland_right", "portal_vein_and_splenic_vein", "small_bowel", "colon"
-                ],
-                "━━━ МАЛЫЙ ТАЗ ━━━": [
-                    "urinary_bladder", "prostate", "rectum", "sacrum", "hip_left", "hip_right", "femur_left", "femur_right",
-                    "iliac_artery_left", "iliac_artery_right", "iliac_vein_left", "iliac_vein_right",
-                    "gluteus_maximus_left", "gluteus_maximus_right", "gluteus_medius_left", "gluteus_medius_right",
-                    "gluteus_minimus_left", "gluteus_minimus_right"
-                ],
-                "━━━ ОТДЕЛЫ ГОЛОВНОГО МОЗГА ━━━": [
-                    "brain", "brain_stem", "cerebellum", "thalamus_left", "thalamus_right", "hippocampus_left", "hippocampus_right",
-                    "amygdala_left", "amygdala_right", "caudate_left", "caudate_right", "putamen_left", "putamen_right",
-                    "pallidum_left", "pallidum_right"
-                ]
-            }
+            # Использование глобального ORGAN_GROUPS из config.py
 
             # Получаем все доступные органы динамически из движка
             all_supported_organs = self.engine.get_all_supported_organs()
@@ -1989,53 +1974,27 @@ if PYQT_AVAILABLE:
                 progress_dialog.show()
                 QApplication.processEvents()
                 
-                # Словарь сопоставления имён из RTSTRUCT -> технический ID органа
-                rtstruct_name_to_id = {}
+                # Умное нечеткое сопоставление (Fuzzy Matching) OAR
+                normalize_name = lambda n: re.sub(r'[^a-z0-9]', '', n.lower())
+                all_supported_organs = self.engine.get_all_supported_organs()
                 
-                # Этап 1: Добавляем алиасы из пресетов
-                if hasattr(self.engine, 'presets'):
-                    for pname, pitems in self.engine.presets.items():
-                        for it in pitems:
-                            if isinstance(it, dict):
-                                for organ_name, aliases in it.items():
-                                    for alias in aliases:
-                                        rtstruct_name_to_id[alias.lower()] = organ_name.lower()
-                                    rtstruct_name_to_id[organ_name.lower()] = organ_name.lower()
-                            elif isinstance(it, str):
-                                rtstruct_name_to_id[it.lower()] = it.lower()
-                                
-                # Этап 2: Добавляем обратный маппинг для всех поддерживаемых органов
-                for org in self.engine.get_all_supported_organs():
-                    pretty_names = []
-                    # Добавляем Monaco-совместимое имя из движка
-                    pretty_names.append(self.engine.get_monaco_pretty_name(org))
-                    
-                    # Резервные полные варианты для обратной совместимости
-                    if org == "urinary_bladder":
-                        pretty_names.append("Urinary Bladder")
-                    elif org == "lens_left":
-                        pretty_names.append("Lens Left")
-                    elif org == "lens_right":
-                        pretty_names.append("Lens Right")
-                    elif org == "optic_nerve_left":
-                        pretty_names.append("Optic Nerve Left")
-                    elif org == "optic_nerve_right":
-                        pretty_names.append("Optic Nerve Right")
-                    else:
-                        pretty_names.append(org.replace("_", " ").title())
-                        
-                    # Дополнительные лаконичные суффиксы L/R
-                    if org.endswith("_left"):
-                        pretty_names.append(org.replace("_left", " L").replace("_", " ").title())
-                        pretty_names.append(org.replace("_left", " Left").replace("_", " ").title())
-                    elif org.endswith("_right"):
-                        pretty_names.append(org.replace("_right", " R").replace("_", " ").title())
-                        pretty_names.append(org.replace("_right", " Right").replace("_", " ").title())
-                        
-                    for pretty_name in pretty_names:
-                        rtstruct_name_to_id[pretty_name.lower()] = org
- 
-                file_organs = set(rtstruct_name_to_id.get(r.lower(), r.lower().replace(" ", "_")) for r in roi_names)
+                # Создаем быстрый маппинг нормализованных имен на их технические ID
+                supported_norm_map = {}
+                for org in all_supported_organs:
+                    supported_norm_map[normalize_name(org)] = org
+                    mon_pretty = self.engine.get_monaco_pretty_name(org)
+                    if mon_pretty:
+                        supported_norm_map[normalize_name(mon_pretty)] = org
+
+                def get_mapped_organ(roi_name_str: str) -> str:
+                    norm = normalize_name(roi_name_str)
+                    if norm in EXTERNAL_ALIASES:
+                        return EXTERNAL_ALIASES[norm]
+                    if norm in supported_norm_map:
+                        return supported_norm_map[norm]
+                    return roi_name_str.lower().replace(" ", "_")
+
+                file_organs = set(get_mapped_organ(r) for r in roi_names)
 
                 # Если это первая загрузка этого файла RTSTRUCT, интеллектуально отмечаем только те органы, которые в нем есть
                 if is_new_rtstruct:
@@ -2050,7 +2009,7 @@ if PYQT_AVAILABLE:
                             else:
                                 org_name = itm_data
                             
-                            if org_name and org_name.lower() in file_organs:
+                            if org_name and get_mapped_organ(org_name) in file_organs:
                                 itm.setCheckState(Qt.CheckState.Checked)
                             else:
                                 itm.setCheckState(Qt.CheckState.Unchecked)
@@ -2075,21 +2034,22 @@ if PYQT_AVAILABLE:
                         if org_name:
                             checked_organs.add(org_name.lower())
                 
-                # Если ни одна галочка не совпала с органами файла - показываем все
-                if not checked_organs.intersection(file_organs):
-                    checked_organs = file_organs
+                # Если ни одна галочка не совпала с органами файла - показываем все (кроме body, который рисуется всегда)
+                file_organs_no_body = file_organs - {"body"}
+                if not checked_organs.intersection(file_organs_no_body):
+                    checked_organs = file_organs_no_body
                 
                 z_dim, x_dim, y_dim = self.volume_3d_base.shape
                 overlay_3d = np.zeros((z_dim, x_dim, y_dim, 4), dtype=np.uint8)
                 
                 for idx, roi in enumerate(roi_names, start=1):
                     try:
-                        alias_key = roi.lower()
-                        # Если имя не найдено в словаре, делаем фолбэк: меняем пробелы обратно на подчеркивания
-                        orig_organ = rtstruct_name_to_id.get(alias_key, alias_key.replace(" ", "_"))
+                        orig_organ = get_mapped_organ(roi)
                         
                         # Получаем красивое русское название органа для пошагового вывода
                         ru_name = self.engine.ru_names.get(orig_organ, orig_organ)
+                        if orig_organ == "body":
+                            ru_name = "Контур тела (Body)"
                         
                         # Обновляем прогресс
                         if progress_dialog:
@@ -2098,7 +2058,7 @@ if PYQT_AVAILABLE:
                         self.status_step_label.setText(f"⏳ Отрисовка контуров: {ru_name} ({idx}/{total_rois})...")
                         QApplication.processEvents()
                         
-                        if orig_organ not in checked_organs:
+                        if orig_organ != "body" and orig_organ not in checked_organs:
                             continue
                         
                         # Используем безопасный slice-by-slice экстрактор вместо get_roi_mask_by_name,
@@ -2111,11 +2071,21 @@ if PYQT_AVAILABLE:
                             getattr(self, 'dicom_image_position', [0.0, 0.0])
                         )   # возвращает (z, x, y) bool array
                         
-                        color = self.engine.colors.get(orig_organ, [0, 255, 128])
-                        overlay_3d[mask_3d, 0] = color[0]
-                        overlay_3d[mask_3d, 1] = color[1]
-                        overlay_3d[mask_3d, 2] = color[2]
-                        overlay_3d[mask_3d, 3] = 100
+                        if orig_organ == "body":
+                            import scipy.ndimage
+                            # Получаем тонкую линию силуэта кожи
+                            boundary = mask_3d ^ scipy.ndimage.binary_erosion(mask_3d, structure=np.ones((1, 3, 3)))
+                            # Закрашиваем светло-серым цветом [220, 220, 220] с высокой непрозрачностью 255
+                            overlay_3d[boundary, 0] = 220
+                            overlay_3d[boundary, 1] = 220
+                            overlay_3d[boundary, 2] = 220
+                            overlay_3d[boundary, 3] = 255
+                        else:
+                            color = self.engine.colors.get(orig_organ, [0, 255, 128])
+                            overlay_3d[mask_3d, 0] = color[0]
+                            overlay_3d[mask_3d, 1] = color[1]
+                            overlay_3d[mask_3d, 2] = color[2]
+                            overlay_3d[mask_3d, 3] = 100
                     except Exception as roi_e:
                         logger.warning(f"Не удалось отрисовать структуру {roi}: {roi_e}")
                 
@@ -2535,7 +2505,7 @@ if PYQT_AVAILABLE:
             # Наборы пресетов
             preset_palettes = {
                 "Классический AI Contour": {"spleen": [156, 39, 176], "kidney_right": [3, 169, 244], "kidney_left": [33, 150, 243], "gallbladder": [76, 175, 80], "liver": [139, 195, 74], "stomach": [255, 152, 0], "aorta": [244, 67, 54], "inferior_vena_cava": [63, 81, 181], "urinary_bladder": [255, 235, 59], "heart": [233, 30, 99], "lung_left": [0, 150, 136], "lung_right": [0, 188, 212], "trachea": [121, 85, 72], "esophagus": [158, 158, 158], "pancreas": [255, 193, 7], "duodenum": [173, 20, 87], "adrenal_gland_left": [255, 87, 34], "adrenal_gland_right": [255, 112, 67], "pulmonary_artery": [0, 150, 255], "small_bowel": [103, 58, 183], "prostate": [233, 30, 99], "rectum": [121, 85, 72], "colon": [0, 121, 107], "femur_left": [255, 224, 178], "femur_right": [255, 224, 178], "hip_left": [230, 238, 156], "hip_right": [230, 238, 156], "sacrum": [141, 110, 99], "spinal_cord": [0, 255, 0], "thyroid_gland": [255, 105, 180], "skull": [255, 228, 196], "brain": [135, 206, 250], "common_carotid_artery_left": [220, 20, 60], "common_carotid_artery_right": [220, 20, 60], "superior_vena_cava": [70, 130, 180], "portal_vein_and_splenic_vein": [0, 139, 139], "clavicula_left": [244, 164, 96], "clavicula_right": [244, 164, 96], "sternum": [222, 184, 135], "iliac_artery_left": [255, 99, 71], "iliac_artery_right": [255, 99, 71], "eye_left": [255, 255, 0], "eye_right": [255, 255, 0], "lens_left": [255, 165, 0], "lens_right": [255, 165, 0], "brain_stem": [210, 105, 30], "optic_nerve_left": [240, 230, 140], "optic_nerve_right": [240, 230, 140]},
-                "Клинический QUANTEC": {"spleen": [160, 32, 240], "kidney_right": [0, 0, 255], "kidney_left": [30, 144, 255], "gallbladder": [0, 255, 0], "liver": [34, 139, 34], "stomach": [218, 165, 32], "aorta": [55, 197, 94], "inferior_vena_cava": [194, 166, 130], "urinary_bladder": [255, 215, 0], "heart": [255, 0, 0], "lung_left": [86, 123, 174], "lung_right": [195, 54, 110], "trachea": [149, 58, 171], "esophagus": [138, 127, 103], "pancreas": [153, 97, 184], "duodenum": [168, 85, 61], "adrenal_gland_left": [114, 125, 152], "adrenal_gland_right": [161, 157, 200], "pulmonary_artery": [98, 122, 139], "small_bowel": [177, 66, 127], "prostate": [152, 133, 118], "rectum": [139, 69, 19], "colon": [191, 68, 120], "femur_left": [135, 139, 183], "femur_right": [159, 155, 157], "hip_left": [146, 175, 165], "hip_right": [85, 193, 174], "sacrum": [96, 111, 190], "spinal_cord": [116, 98, 57], "thyroid_gland": [113, 52, 117], "skull": [94, 188, 72], "brain": [155, 169, 192], "common_carotid_artery_left": [51, 115, 144], "common_carotid_artery_right": [86, 147, 196], "superior_vena_cava": [84, 137, 160], "portal_vein_and_splenic_vein": [113, 127, 112], "clavicula_left": [144, 51, 84], "clavicula_right": [176, 73, 124], "sternum": [85, 68, 152], "iliac_artery_left": [134, 69, 129], "iliac_artery_right": [78, 137, 190], "eye_left": [255, 255, 100], "eye_right": [255, 255, 100], "lens_left": [255, 140, 0], "lens_right": [255, 140, 0], "brain_stem": [139, 69, 19], "optic_nerve_left": [255, 215, 0], "optic_nerve_right": [255, 215, 0]},
+                "QUANTEC": {"spleen": [160, 32, 240], "kidney_right": [0, 0, 255], "kidney_left": [30, 144, 255], "gallbladder": [0, 255, 0], "liver": [34, 139, 34], "stomach": [218, 165, 32], "aorta": [55, 197, 94], "inferior_vena_cava": [194, 166, 130], "urinary_bladder": [255, 215, 0], "heart": [255, 0, 0], "lung_left": [86, 123, 174], "lung_right": [195, 54, 110], "trachea": [149, 58, 171], "esophagus": [138, 127, 103], "pancreas": [153, 97, 184], "duodenum": [168, 85, 61], "adrenal_gland_left": [114, 125, 152], "adrenal_gland_right": [161, 157, 200], "pulmonary_artery": [98, 122, 139], "small_bowel": [177, 66, 127], "prostate": [152, 133, 118], "rectum": [139, 69, 19], "colon": [191, 68, 120], "femur_left": [135, 139, 183], "femur_right": [159, 155, 157], "hip_left": [146, 175, 165], "hip_right": [85, 193, 174], "sacrum": [96, 111, 190], "spinal_cord": [116, 98, 57], "thyroid_gland": [113, 52, 117], "skull": [94, 188, 72], "brain": [155, 169, 192], "common_carotid_artery_left": [51, 115, 144], "common_carotid_artery_right": [86, 147, 196], "superior_vena_cava": [84, 137, 160], "portal_vein_and_splenic_vein": [113, 127, 112], "clavicula_left": [144, 51, 84], "clavicula_right": [176, 73, 124], "sternum": [85, 68, 152], "iliac_artery_left": [134, 69, 129], "iliac_artery_right": [78, 137, 190], "eye_left": [255, 255, 100], "eye_right": [255, 255, 100], "lens_left": [255, 140, 0], "lens_right": [255, 140, 0], "brain_stem": [139, 69, 19], "optic_nerve_left": [255, 215, 0], "optic_nerve_right": [255, 215, 0]},
                 "Яркий неоновый": {"spleen": [255, 0, 255], "kidney_right": [0, 255, 255], "kidney_left": [0, 191, 255], "gallbladder": [50, 205, 50], "liver": [173, 255, 47], "stomach": [255, 165, 0], "aorta": [255, 255, 0], "inferior_vena_cava": [128, 0, 255], "urinary_bladder": [255, 255, 0], "heart": [255, 20, 147], "lung_left": [255, 0, 255], "lung_right": [255, 0, 255], "trachea": [128, 255, 0], "esophagus": [0, 128, 255], "pancreas": [0, 128, 255], "duodenum": [255, 255, 0], "adrenal_gland_left": [255, 255, 0], "adrenal_gland_right": [255, 0, 128], "pulmonary_artery": [0, 128, 255], "small_bowel": [0, 0, 255], "prostate": [255, 0, 0], "rectum": [210, 105, 30], "colon": [0, 128, 255], "femur_left": [0, 255, 128], "femur_right": [128, 255, 0], "hip_left": [128, 0, 255], "hip_right": [0, 0, 255], "sacrum": [255, 0, 255], "spinal_cord": [255, 0, 128], "thyroid_gland": [0, 0, 255], "skull": [255, 0, 0], "brain": [0, 0, 255], "common_carotid_artery_left": [0, 255, 0], "common_carotid_artery_right": [0, 0, 255], "superior_vena_cava": [0, 128, 255], "portal_vein_and_splenic_vein": [0, 255, 0], "clavicula_left": [0, 0, 255], "clavicula_right": [255, 0, 128], "sternum": [0, 255, 0], "iliac_artery_left": [128, 0, 255], "iliac_artery_right": [128, 0, 255], "eye_left": [255, 255, 0], "eye_right": [255, 255, 0], "lens_left": [255, 69, 0], "lens_right": [255, 69, 0], "brain_stem": [255, 105, 180], "optic_nerve_left": [255, 215, 0], "optic_nerve_right": [255, 215, 0]}
             }
 
@@ -2548,12 +2518,16 @@ if PYQT_AVAILABLE:
                 # Сохраняем в presets.json
                 self.engine.save_presets_config()
                 
-                # Обновляем все иконки в списке
-                for i in range(self.organs_list.count()):
-                    itm = self.organs_list.item(i)
-                    org = itm.data(Qt.ItemDataRole.UserRole)
-                    if org != "header":
-                        self.update_item_color_icon(itm, org)
+                # Обновляем все иконки в списке с временной блокировкой сигналов
+                self.structures_list.blockSignals(True)
+                try:
+                    for i in range(self.structures_list.count()):
+                        itm = self.structures_list.item(i)
+                        org = itm.data(Qt.ItemDataRole.UserRole)
+                        if org != "header":
+                            self.update_item_color_icon(itm, org)
+                finally:
+                    self.structures_list.blockSignals(False)
                 
                 logger.info(f"Цветовая гамма переключена на пресет: '{text}'")
 

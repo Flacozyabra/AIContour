@@ -42,47 +42,7 @@ from scipy.ndimage import label, gaussian_filter
 # Настройка локального логера движка
 logger = logging.getLogger("ContourEngine")
 
-# Глобальный словарь маппинга органов на таски TotalSegmentator
-ROI_TO_TASK_MAP = {
-    # Отделы головного мозга (brain_structures) - требует лицензии
-    'brain': 'brain_structures',
-    'brain_stem': 'brain_structures',
-    'brainstem': 'brain_structures',
-    'cerebellum': 'brain_structures',
-    'thalamus_left': 'brain_structures',
-    'thalamus_right': 'brain_structures',
-    'hippocampus_left': 'brain_structures',
-    'hippocampus_right': 'brain_structures',
-    'amygdala_left': 'brain_structures',
-    'amygdala_right': 'brain_structures',
-    'caudate_left': 'brain_structures',
-    'caudate_right': 'brain_structures',
-    'putamen_left': 'brain_structures',
-    'putamen_right': 'brain_structures',
-    'pallidum_left': 'brain_structures',
-    'pallidum_right': 'brain_structures',
-
-    # Мелкие органы головы (head_glands_cavities) - требует лицензии
-    'eye_left': 'head_glands_cavities',
-    'eye_right': 'head_glands_cavities',
-    'lens_left': 'head_glands_cavities',
-    'lens_right': 'head_glands_cavities',
-    'optic_nerve_left': 'head_glands_cavities',
-    'optic_nerve_right': 'head_glands_cavities',
-    'parotid_gland_left': 'head_glands_cavities',
-    'parotid_gland_right': 'head_glands_cavities',
-    'submandibular_gland_left': 'head_glands_cavities',
-    'submandibular_gland_right': 'head_glands_cavities',
-    'nasal_cavity_left': 'head_glands_cavities',
-    'nasal_cavity_right': 'head_glands_cavities',
-    'nasopharynx': 'head_glands_cavities',
-    'oropharynx': 'head_glands_cavities',
-    'hypopharynx': 'head_glands_cavities',
-    'soft_palate': 'head_glands_cavities',
-    'hard_palate': 'head_glands_cavities',
-    'auditory_canal_left': 'head_glands_cavities',
-    'auditory_canal_right': 'head_glands_cavities',
-}
+from config import ROI_TO_TASK_MAP, FILE_NAME_MAP, MONACO_NAMES_MAP
 
 # Дефолтные настройки для автогенерации presets.json при его отсутствии
 DEFAULT_PRESETS_DATA = {
@@ -542,16 +502,8 @@ class ContourEngine:
         """
         Возвращает красивое имя OAR, совместимое с Elekta Monaco 5.51 и интерфейсом.
         """
-        if organ_name == "lens_left":
-            return "Lens L"
-        if organ_name == "lens_right":
-            return "Lens R"
-        if organ_name == "optic_nerve_left":
-            return "Optic Nerve L"
-        if organ_name == "optic_nerve_right":
-            return "Optic Nerve R"
-        if organ_name == "urinary_bladder":
-            return "Bladder"
+        if organ_name in MONACO_NAMES_MAP:
+            return MONACO_NAMES_MAP[organ_name]
             
         pretty = organ_name
         if pretty.endswith("_left"):
@@ -1034,10 +986,6 @@ class ContourEngine:
             if not mask_files:
                 raise RuntimeError("Не найдено масок органов после сегментации.")
                 
-            FILE_NAME_MAP = {
-                "eye_lens_left": "lens_left",
-                "eye_lens_right": "lens_right"
-            }
             detected_organs = sorted([FILE_NAME_MAP.get(f.name.replace(".nii.gz", ""), f.name.replace(".nii.gz", "")) for f in mask_files])
             logger.info(f"Обнаружено сегментированных масок органов: {len(mask_files)}")
             logger.info(f"Список определенных ИИ органов на КТ: {detected_organs}")
@@ -1109,10 +1057,6 @@ class ContourEngine:
                     for k, v in item.items():
                         organ_to_aliases[k] = v
             
-            FILE_NAME_MAP = {
-                "eye_lens_left": "lens_left",
-                "eye_lens_right": "lens_right"
-            }
             for idx, mask_file in enumerate(mask_files):
                 organ_name = mask_file.name.replace(".nii.gz", "")
                 if organ_name in FILE_NAME_MAP:
