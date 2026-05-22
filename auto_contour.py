@@ -896,7 +896,7 @@ if PYQT_AVAILABLE:
             self.radio_merge_new = QRadioButton("Создать новый файл RTSTRUCT")
             self.radio_merge_merge = QRadioButton("Дополнить существующий файл")
             
-            self.radio_merge_merge.setChecked(True)
+            self.radio_merge_new.setChecked(True)
             self.merge_btn_group.addButton(self.radio_merge_new, 1)
             self.merge_btn_group.addButton(self.radio_merge_merge, 2)
             
@@ -2161,6 +2161,14 @@ if PYQT_AVAILABLE:
                 self._clear_imported_organs()
                 self._last_loaded_rtstruct = None
                 
+                # Делаем доступными выбор пресетов и кнопки "выбрать все"/"снять все"
+                if hasattr(self, 'preset_combo'):
+                    self.preset_combo.setEnabled(True)
+                if hasattr(self, 'btn_select_all'):
+                    self.btn_select_all.setEnabled(True)
+                if hasattr(self, 'btn_deselect_all'):
+                    self.btn_deselect_all.setEnabled(True)
+                
                 # Возвращаем видимость всем стандартным органам
                 self.organs_list.blockSignals(True)
                 for i in range(self.organs_list.count()):
@@ -2186,6 +2194,14 @@ if PYQT_AVAILABLE:
                 self.update_organs_list_highlighting()
                 self.update_run_button(bool(self.series_table.selectedItems()))
                 return
+                
+            # Делаем недоступными выбор пресетов и кнопки "выбрать все"/"снять все"
+            if hasattr(self, 'preset_combo'):
+                self.preset_combo.setEnabled(False)
+            if hasattr(self, 'btn_select_all'):
+                self.btn_select_all.setEnabled(False)
+            if hasattr(self, 'btn_deselect_all'):
+                self.btn_deselect_all.setEnabled(False)
                 
             rtstruct_path = self.rtstruct_combo.currentData()
             if not rtstruct_path or not os.path.exists(rtstruct_path):
@@ -3153,9 +3169,11 @@ if PYQT_AVAILABLE:
             self.input_edit.setEnabled(enabled)
             self.series_table.setEnabled(enabled)
             self.btn_input.setEnabled(enabled)
-            self.btn_select_all.setEnabled(enabled)
-            self.btn_deselect_all.setEnabled(enabled)
-            self.preset_combo.setEnabled(enabled)
+            # Кнопки выбора органов и пресетов должны быть заблокированы в режиме просмотра
+            is_view_mode = hasattr(self, 'chk_show_structures') and self.chk_show_structures.isChecked()
+            self.btn_select_all.setEnabled(enabled and not is_view_mode)
+            self.btn_deselect_all.setEnabled(enabled and not is_view_mode)
+            self.preset_combo.setEnabled(enabled and not is_view_mode)
             self.organs_list.setEnabled(enabled)
             self.precision_combo.setEnabled(enabled)
             self.clean_blobs_check.setEnabled(enabled)
