@@ -1985,11 +1985,22 @@ if PYQT_AVAILABLE:
                                 
                 # Этап 2: Добавляем обратный маппинг для всех поддерживаемых органов
                 for org in self.engine.get_all_supported_organs():
+                    pretty_names = []
                     if org == "urinary_bladder":
-                        pretty_name = "Bladder"
+                        pretty_names.append("Bladder")
+                    elif org == "lens_left":
+                        pretty_names.extend(["Lens L", "Lens Left"])
+                    elif org == "lens_right":
+                        pretty_names.extend(["Lens R", "Lens Right"])
+                    elif org == "optic_nerve_left":
+                        pretty_names.extend(["Optic Nerve L", "Optic Nerve Left"])
+                    elif org == "optic_nerve_right":
+                        pretty_names.extend(["Optic Nerve R", "Optic Nerve Right"])
                     else:
-                        pretty_name = org.replace("_", " ").title()
-                    rtstruct_name_to_id[pretty_name.lower()] = org
+                        pretty_names.append(org.replace("_", " ").title())
+                        
+                    for pretty_name in pretty_names:
+                        rtstruct_name_to_id[pretty_name.lower()] = org
  
                 file_organs = set(rtstruct_name_to_id.get(r.lower(), r.lower().replace(" ", "_")) for r in roi_names)
 

@@ -935,7 +935,11 @@ class ContourEngine:
             if not mask_files:
                 raise RuntimeError("Не найдено масок органов после сегментации.")
                 
-            detected_organs = sorted([f.name.replace(".nii.gz", "") for f in mask_files])
+            FILE_NAME_MAP = {
+                "eye_lens_left": "lens_left",
+                "eye_lens_right": "lens_right"
+            }
+            detected_organs = sorted([FILE_NAME_MAP.get(f.name.replace(".nii.gz", ""), f.name.replace(".nii.gz", "")) for f in mask_files])
             logger.info(f"Обнаружено сегментированных масок органов: {len(mask_files)}")
             logger.info(f"Список определенных ИИ органов на КТ: {detected_organs}")
             
@@ -1006,8 +1010,14 @@ class ContourEngine:
                     for k, v in item.items():
                         organ_to_aliases[k] = v
             
+            FILE_NAME_MAP = {
+                "eye_lens_left": "lens_left",
+                "eye_lens_right": "lens_right"
+            }
             for idx, mask_file in enumerate(mask_files):
                 organ_name = mask_file.name.replace(".nii.gz", "")
+                if organ_name in FILE_NAME_MAP:
+                    organ_name = FILE_NAME_MAP[organ_name]
                 
                 if progress_callback:
                     prog = 95 + int((idx / len(mask_files)) * 5)
@@ -1064,9 +1074,17 @@ class ContourEngine:
                 else:
                     # Стандартное английское название
                     pretty_name = organ_name.replace("_", " ").title()
-                    # Исключения для более компактного вида в TPS
+                    # Исключения для более компактного вида в TPS (в т.ч. требования Elekta Monaco)
                     if organ_name == "urinary_bladder":
                         pretty_name = "Bladder"
+                    elif organ_name == "lens_left":
+                        pretty_name = "Lens L"
+                    elif organ_name == "lens_right":
+                        pretty_name = "Lens R"
+                    elif organ_name == "optic_nerve_left":
+                        pretty_name = "Optic Nerve L"
+                    elif organ_name == "optic_nerve_right":
+                        pretty_name = "Optic Nerve R"
                     roi_names_to_add.append((pretty_name, color))
                 
                 # Добавление в RTSTRUCT
