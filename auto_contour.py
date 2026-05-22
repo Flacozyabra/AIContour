@@ -2263,19 +2263,25 @@ if PYQT_AVAILABLE:
                 # Управляем видимостью стандартных органов и пустых заголовков групп
                 self.organs_list.blockSignals(True)
                 try:
-                    group_structures = {}
+                    group_structures = []
                     last_header = None
+                    current_group_items = []
                     
                     for i in range(self.organs_list.count()):
                         item = self.organs_list.item(i)
                         itm_data = item.data(Qt.ItemDataRole.UserRole)
                         if itm_data == "header":
+                            if last_header is not None:
+                                group_structures.append((last_header, current_group_items))
                             last_header = item
-                            group_structures[last_header] = []
+                            current_group_items = []
                         elif last_header is not None:
-                            group_structures[last_header].append(item)
+                            current_group_items.append(item)
                             
-                    for header, items in group_structures.items():
+                    if last_header is not None:
+                        group_structures.append((last_header, current_group_items))
+                            
+                    for header, items in group_structures:
                         group_visible = False
                         for item in items:
                             if item in self.imported_items:
