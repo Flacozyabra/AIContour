@@ -1388,7 +1388,6 @@ if PYQT_AVAILABLE:
             # Добавляем пресеты из движка
             presets_keys = list(self.engine.presets.keys())
             self.preset_combo.addItems(presets_keys)
-            self.preset_combo.addItem("Все органы (All)")
             self.preset_combo.addItem("Пользовательский (Custom)")
 
             # Использование глобального ORGAN_GROUPS из config.py
@@ -2141,6 +2140,8 @@ if PYQT_AVAILABLE:
                 del self.roi_overlay_3d
 
         def on_show_structures_changed(self):
+            if getattr(self, 'is_switching_color_preset', False):
+                return
             import pyqtgraph as pg
             import numpy as np
             from PyQt6.QtWidgets import QApplication, QProgressDialog
@@ -2160,6 +2161,17 @@ if PYQT_AVAILABLE:
                 self._clear_roi_overlay(permanent=False)
                 self._clear_imported_organs()
                 self._last_loaded_rtstruct = None
+                
+                # Возвращаем цветовую гамму QUANTEC при выходе из просмотра
+                if hasattr(self, 'color_preset_combo') and self.color_preset_combo.currentText() != "Цвета QUANTEC":
+                    self.is_switching_color_preset = True
+                    try:
+                        self.color_preset_combo.blockSignals(True)
+                        self.color_preset_combo.setCurrentText("Цвета QUANTEC")
+                        self.color_preset_combo.blockSignals(False)
+                        self.on_color_preset_changed("Цвета QUANTEC")
+                    finally:
+                        self.is_switching_color_preset = False
                 
                 # Делаем доступными выбор пресетов и кнопки "выбрать все"/"снять все"
                 if hasattr(self, 'preset_combo'):
@@ -2195,6 +2207,17 @@ if PYQT_AVAILABLE:
                 self.update_run_button(bool(self.series_table.selectedItems()))
                 return
                 
+            # Переключаем цветовую гамму на неоновую для режима просмотра
+            if hasattr(self, 'color_preset_combo') and self.color_preset_combo.currentText() != "Яркий неоновый":
+                self.is_switching_color_preset = True
+                try:
+                    self.color_preset_combo.blockSignals(True)
+                    self.color_preset_combo.setCurrentText("Яркий неоновый")
+                    self.color_preset_combo.blockSignals(False)
+                    self.on_color_preset_changed("Яркий неоновый")
+                finally:
+                    self.is_switching_color_preset = False
+
             # Делаем недоступными выбор пресетов и кнопки "выбрать все"/"снять все"
             if hasattr(self, 'preset_combo'):
                 self.preset_combo.setEnabled(False)

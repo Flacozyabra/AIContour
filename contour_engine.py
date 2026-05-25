@@ -511,16 +511,11 @@ class ContourEngine:
             "Брюшная полость (Abdomen)": abdomen,
             "Малый таз (Pelvis)": pelvis,
             "Отделы головного мозга (Brain Structures)": brain_structs,
-            "Остальное": other_preset,
-            "Все структуры / Full Total": full_total_preset
         }
 
         # Дополняем отсутствующие пресеты, но не затираем существующие кастомизированные
         for k, v in new_presets.items():
             if k not in self.presets:
-                self.presets[k] = v
-                changed = True
-            elif k == "Все структуры / Full Total" and self.presets[k] != v:
                 self.presets[k] = v
                 changed = True
 
