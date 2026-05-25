@@ -52,7 +52,10 @@ ROI_TO_TASK_MAP = {
 # Маппинг файлов масок ИИ на стандартные ID OAR
 FILE_NAME_MAP = {
     "eye_lens_left": "lens_left",
-    "eye_lens_right": "lens_right"
+    "eye_lens_right": "lens_right",
+    "iliac_vena_left": "iliac_vein_left",
+    "iliac_vena_right": "iliac_vein_right",
+    "brainstem": "brain_stem"
 }
 
 # Жесткий маппинг красивых названий OAR для Elekta Monaco 5.51

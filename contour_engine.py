@@ -812,6 +812,33 @@ class ContourEngine:
             tasks_to_run = {}
             skipped_organs = []
 
+            # Словарь маппинга наших имен OAR на имена классов в ИИ TotalSegmentator
+            AI_CLASS_NAME_MAP = {
+                "lens_left": "eye_lens_left",
+                "lens_right": "eye_lens_right",
+                "iliac_vein_left": "iliac_vena_left",
+                "iliac_vein_right": "iliac_vena_right",
+                "brain_stem": "brainstem",
+                "thalamus_left": "thalamus",
+                "thalamus_right": "thalamus",
+                "hippocampus_left": "hippocampus",
+                "hippocampus_right": "hippocampus",
+                "amygdala_left": "amygdala",
+                "amygdala_right": "amygdala",
+                "caudate_left": "caudate_nucleus",
+                "caudate_right": "caudate_nucleus",
+                "putamen_left": "lentiform_nucleus",
+                "putamen_right": "lentiform_nucleus",
+                "pallidum_left": "lentiform_nucleus",
+                "pallidum_right": "lentiform_nucleus",
+            }
+
+            try:
+                from totalsegmentator.map_to_binary import class_map
+            except Exception as e:
+                logger.warning(f"Не удалось загрузить class_map из TotalSegmentator: {e}")
+                class_map = {}
+
             if precision_mode == "faster":
                 tasks_to_run["body"] = []
             elif target_organs:
@@ -823,17 +850,46 @@ class ContourEngine:
                     if organ in VIRTUAL_ORGANS_MAP:
                         parts = VIRTUAL_ORGANS_MAP[organ]
                         logger.info(f"Орган '{organ}' разбит на составные части: {parts}")
-                        for part in parts:
-                            task = ROI_TO_TASK_MAP.get(part, 'total')
+                        resolved_parts = parts
+                    else:
+                        resolved_parts = [organ]
+
+                    for part in resolved_parts:
+                        # Маппим наше имя на имя в ИИ
+                        ai_part = AI_CLASS_NAME_MAP.get(part, part)
+
+                        # Изначально берем задачу из конфига, иначе 'total'
+                        task = ROI_TO_TASK_MAP.get(part, 'total')
+
+                        # Проверяем реальную доступность класса в этой задаче
+                        is_valid = False
+                        if class_map:
+                            if task in class_map and ai_part in class_map[task].values():
+                                is_valid = True
+                            else:
+                                # Класс отсутствует в назначенной задаче.
+                                # Ищем, в какой задаче в class_map он реально есть.
+                                found_task = None
+                                for t_name, t_classes in class_map.items():
+                                    if ai_part in t_classes.values():
+                                        found_task = t_name
+                                        break
+                                
+                                if found_task:
+                                    logger.info(f"Орган '{part}' (класс ИИ '{ai_part}') перенаправлен из задачи '{task}' в задачу '{found_task}'.")
+                                    task = found_task
+                                    is_valid = True
+                        else:
+                            # Если class_map не загрузился, доверяем статическому маппингу
+                            is_valid = True
+
+                        if is_valid:
                             if task not in tasks_to_run:
                                 tasks_to_run[task] = []
-                            tasks_to_run[task].append(part)
-                    else:
-                        # Обычный орган: если есть в карте - берем оттуда, иначе по умолчанию 'total'
-                        task = ROI_TO_TASK_MAP.get(organ, 'total')
-                        if task not in tasks_to_run:
-                            tasks_to_run[task] = []
-                        tasks_to_run[task].append(organ)
+                            tasks_to_run[task].append(ai_part)
+                        else:
+                            logger.warning(f"Орган '{part}' (класс ИИ '{ai_part}') не поддерживается текущей версией TotalSegmentator и будет пропущен.")
+                            skipped_organs.append(part)
 
             # Дедупликация ROI внутри каждой задачи
             for task_name in tasks_to_run:
@@ -1129,13 +1185,33 @@ class ContourEngine:
                     for k, v in item.items():
                         organ_to_aliases[k] = v
             
-            for idx, mask_file in enumerate(mask_files):
-                organ_name = mask_file.name.replace(".nii.gz", "")
-                if organ_name in FILE_NAME_MAP:
-                    organ_name = FILE_NAME_MAP[organ_name]
-                
+            # Обратный маппинг классов ИИ на наши стандартные имена OAR (для дублирования/разделения объединенных классов)
+            AI_TO_STANDARD_MAP = {
+                "eye_lens_left": ["lens_left"],
+                "eye_lens_right": ["lens_right"],
+                "iliac_vena_left": ["ilia_vein_left", "iliac_vein_left"],  # на всякий случай опечатку тоже
+                "iliac_vena_right": ["iliac_vein_right"],
+                "brainstem": ["brain_stem"],
+                "thalamus": ["thalamus_left", "thalamus_right"],
+                "hippocampus": ["hippocampus_left", "hippocampus_right"],
+                "amygdala": ["amygdala_left", "amygdala_right"],
+                "caudate_nucleus": ["caudate_left", "caudate_right"],
+                "lentiform_nucleus": ["putamen_left", "putamen_right", "pallidum_left", "pallidum_right"],
+            }
+
+            resolved_mask_items = []
+            for mask_file in mask_files:
+                raw_name = mask_file.name.replace(".nii.gz", "")
+                if raw_name in AI_TO_STANDARD_MAP:
+                    for std_name in AI_TO_STANDARD_MAP[raw_name]:
+                        resolved_mask_items.append((mask_file, std_name))
+                else:
+                    std_name = FILE_NAME_MAP.get(raw_name, raw_name)
+                    resolved_mask_items.append((mask_file, std_name))
+
+            for idx, (mask_file, organ_name) in enumerate(resolved_mask_items):
                 if progress_callback:
-                    prog = 95 + int((idx / len(mask_files)) * 5)
+                    prog = 95 + int((idx / len(resolved_mask_items)) * 5)
                     progress_callback(prog, f"Шаг 4/5: Сглаживание и фильтрация ROI {organ_name}...")
                 
                 # Фильтруем по списку целевых органов (если это не сверхбыстрый режим body, где ищется всё тело)
