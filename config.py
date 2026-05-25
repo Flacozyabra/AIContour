@@ -79,8 +79,10 @@ MONACO_NAMES_MAP = {
     "spinal_cord": "Spinal Cord"
 }
 
-# Строго зафиксированная структура анатомических групп OAR сверху вниз по телу человека
 ORGAN_GROUPS = {
+    "Внешний контур тела (Body)": [
+        "body"
+    ],
     "Голова и шея (Head & Neck)": [
         "brain", "eye_left", "eye_right", "lens_left", "lens_right", "optic_nerve_left", "optic_nerve_right",
         "spinal_cord", "thyroid_gland", "skull", "common_carotid_artery_left", "common_carotid_artery_right",
@@ -92,10 +94,6 @@ ORGAN_GROUPS = {
         "heart", "lung_left", "lung_right", "lungs", "trachea", "esophagus", "aorta", "pulmonary_artery",
         "superior_vena_cava", "sternum", "clavicula_left", "clavicula_right",
         "scapula_left", "scapula_right", "humerus_left", "humerus_right"
-    ],
-    "Брюшная полость (Abdomen)": [
-        "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "pancreas", "duodenum",
-        "adrenal_gland_left", "adrenal_gland_right", "portal_vein_and_splenic_vein", "small_bowel", "colon"
     ],
     "Малый таз (Pelvis)": [
         "urinary_bladder", "prostate", "rectum", "sacrum", "hip_left", "hip_right", "femur_left", "femur_right",
