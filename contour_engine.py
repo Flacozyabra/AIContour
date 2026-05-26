@@ -86,6 +86,7 @@ DEFAULT_PRESETS_DATA = {
         "heart": [233, 30, 99],
         "lung_left": [0, 150, 136],
         "lung_right": [0, 188, 212],
+        "lungs": [0, 172, 193],
         "trachea": [121, 85, 72],
         "esophagus": [158, 158, 158],
         "pancreas": [255, 193, 7],

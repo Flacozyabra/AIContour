@@ -76,7 +76,8 @@ MONACO_NAMES_MAP = {
     "optic_nerve_left": "Optic Nerve L",
     "optic_nerve_right": "Optic Nerve R",
     "urinary_bladder": "Bladder",
-    "spinal_cord": "Spinal Cord"
+    "spinal_cord": "Spinal Cord",
+    "lungs": "Lungs Total"
 }
 
 ORGAN_GROUPS = {
