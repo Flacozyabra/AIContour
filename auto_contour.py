@@ -1317,6 +1317,11 @@ if PYQT_AVAILABLE:
             self.dl_worker.start()
             progress.exec()
 
+    class NonScrollComboBox(QComboBox):
+        """Выпадающий список QComboBox, который игнорирует событие прокрутки колесика мыши во избежание случайных изменений."""
+        def wheelEvent(self, event):
+            event.ignore()
+
     class MainWindow(QMainWindow):
         """Главное окно графического интерфейса приложения."""
         def __init__(self):
@@ -1484,7 +1489,7 @@ if PYQT_AVAILABLE:
             merge_group_layout.addWidget(self.radio_merge_merge)
             
             # Выпадающий список выбора целевого файла для дополнения
-            self.merge_rtstruct_combo = QComboBox()
+            self.merge_rtstruct_combo = NonScrollComboBox()
             self.merge_rtstruct_combo.setEnabled(False)
             self.merge_rtstruct_combo.setStyleSheet("margin-left: 20px; padding: 4px;")
             merge_group_layout.addWidget(self.merge_rtstruct_combo)
@@ -1519,7 +1524,7 @@ if PYQT_AVAILABLE:
             precision_group = QGroupBox("Точность и разрешение ИИ")
             precision_group_layout = QVBoxLayout(precision_group)
             
-            self.precision_combo = QComboBox()
+            self.precision_combo = NonScrollComboBox()
             self.precision_combo.addItems([
                 "Стандартная (1.5 мм)",
                 "Быстрая (3.0 мм)",
@@ -1552,7 +1557,7 @@ if PYQT_AVAILABLE:
             
             smoothing_param_layout = QHBoxLayout()
             smoothing_param_label = QLabel("Уровень сглаживания:")
-            self.smoothing_combo = QComboBox()
+            self.smoothing_combo = NonScrollComboBox()
             self.smoothing_combo.addItems([
                 "Легкое (sigma = 0.5)",
                 "Стандартное (sigma = 1.0)",
@@ -1575,7 +1580,7 @@ if PYQT_AVAILABLE:
             color_group_layout = QVBoxLayout(color_group)
             
             color_preset_label = QLabel("Предопределенный набор цветов:")
-            self.color_preset_combo = QComboBox()
+            self.color_preset_combo = NonScrollComboBox()
             self.color_preset_combo.addItems([
                 "Классический",
                 "Цвета QUANTEC",
