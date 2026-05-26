@@ -58,10 +58,12 @@ except ImportError:
 
 # Импортируем конфигурационные данные
 try:
-    from config import ORGAN_GROUPS, EXTERNAL_ALIASES
+    from config import ORGAN_GROUPS, EXTERNAL_ALIASES, LICENSED_TASKS, ROI_TO_TASK_MAP
 except ImportError:
     ORGAN_GROUPS = {}
     EXTERNAL_ALIASES = {}
+    LICENSED_TASKS = {}
+    ROI_TO_TASK_MAP = {}
 
 # Настройка логирования
 logging.basicConfig(
@@ -745,6 +747,150 @@ if PYQT_AVAILABLE:
     }
     """
 
+    class LicensesDialog(QDialog):
+        """Диалоговое окно управления лицензиями суб-моделей ИИ."""
+        def __init__(self, parent=None, engine=None):
+            super().__init__(parent)
+            self.engine = engine
+            self.setWindowTitle("🔑 Лицензирование суб-моделей TotalSegmentator")
+            self.setMinimumSize(580, 420)
+            self.init_ui()
+            
+        def init_ui(self):
+            self.setStyleSheet(DARK_QSS)
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(15, 15, 15, 15)
+            layout.setSpacing(12)
+            
+            # Заголовок
+            title = QLabel("🔑 Лицензии суб-моделей TotalSegmentator")
+            title.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+            layout.addWidget(title)
+            
+            descr = QLabel(
+                "Некоторые суб-модели (например, оконтуривание отделов головного мозга) "
+                "требуют активации лицензионных ключей TotalSegmentator."
+            )
+            descr.setWordWrap(True)
+            descr.setStyleSheet("color: #a0a0a0; font-size: 12px; margin-bottom: 5px;")
+            layout.addWidget(descr)
+            
+            # Таблица текущих лицензий
+            self.table = QTableWidget(0, 3)
+            self.table.setHorizontalHeaderLabels(["Суб-модель ИИ", "Статус", "Ключ"])
+            self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+            self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+            self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            self.table.setStyleSheet("""
+                QTableWidget {
+                    background-color: #1e1e1e;
+                    border: 1px solid #2d2d2d;
+                    border-radius: 6px;
+                    color: #e0e0e0;
+                }
+                QHeaderView::section {
+                    background-color: #242424;
+                    color: #ffffff;
+                    padding: 6px;
+                    border: 1px solid #2d2d2d;
+                    font-weight: bold;
+                }
+            """)
+            layout.addWidget(self.table)
+            
+            # Группа добавления/изменения ключа
+            form_group = QGroupBox("Добавить или обновить лицензионный ключ")
+            form_layout = QVBoxLayout(form_group)
+            form_layout.setSpacing(10)
+            
+            row_layout = QHBoxLayout()
+            self.combo_task = QComboBox()
+            for k, v in LICENSED_TASKS.items():
+                self.combo_task.addItem(v, k)
+            
+            self.edit_key = QLineEdit()
+            self.edit_key.setPlaceholderText("Введите лицензионный ключ...")
+            
+            row_layout.addWidget(self.combo_task, 2)
+            row_layout.addWidget(self.edit_key, 3)
+            form_layout.addLayout(row_layout)
+            
+            btn_layout = QHBoxLayout()
+            self.btn_save = QPushButton("💾 Активировать / Сохранить")
+            self.btn_save.setObjectName("btnBrowse")  # синяя кнопка
+            self.btn_save.clicked.connect(self.save_license)
+            
+            self.btn_delete = QPushButton("🗑️ Удалить")
+            self.btn_delete.setObjectName("btnAction")
+            self.btn_delete.clicked.connect(self.delete_license)
+            
+            btn_layout.addWidget(self.btn_save)
+            btn_layout.addWidget(self.btn_delete)
+            form_layout.addLayout(btn_layout)
+            layout.addWidget(form_group)
+            
+            # Кнопка закрытия
+            self.btn_close = QPushButton("Закрыть")
+            self.btn_close.clicked.connect(self.accept)
+            layout.addWidget(self.btn_close)
+            
+            self.load_table_data()
+            
+        def load_table_data(self):
+            self.table.setRowCount(0)
+            for k, v in LICENSED_TASKS.items():
+                row = self.table.rowCount()
+                self.table.insertRow(row)
+                
+                # Имя
+                self.table.setItem(row, 0, QTableWidgetItem(v))
+                
+                # Статус и Ключ
+                key = self.engine.licenses.get(k, "")
+                if key:
+                    status_item = QTableWidgetItem("✅ Активна")
+                    status_item.setForeground(QBrush(QColor("#00ffd0")))  # неоновый бирюзовый
+                    key_item = QTableWidgetItem(key)
+                else:
+                    status_item = QTableWidgetItem("❌ Отсутствует")
+                    status_item.setForeground(QBrush(QColor("#ff6b6b")))  # красный
+                    key_item = QTableWidgetItem("—")
+                    
+                self.table.setItem(row, 1, status_item)
+                self.table.setItem(row, 2, key_item)
+                
+        def save_license(self):
+            task = self.combo_task.currentData()
+            key = self.edit_key.text().strip()
+            if not key:
+                QMessageBox.warning(self, "Предупреждение", "Лицензионный ключ не может быть пустым.")
+                return
+                
+            self.engine.licenses[task] = key
+            self.engine.save_presets_config()
+            self.edit_key.clear()
+            self.load_table_data()
+            QMessageBox.information(self, "Успех", f"Лицензия для '{LICENSED_TASKS[task]}' успешно сохранена.")
+            
+        def delete_license(self):
+            selected_rows = self.table.selectionModel().selectedRows()
+            if not selected_rows:
+                QMessageBox.warning(self, "Предупреждение", "Выберите строку в таблице для удаления лицензии.")
+                return
+                
+            row = selected_rows[0].row()
+            task_keys = list(LICENSED_TASKS.keys())
+            task = task_keys[row]
+            
+            if task in self.engine.licenses:
+                del self.engine.licenses[task]
+                self.engine.save_presets_config()
+                self.load_table_data()
+                QMessageBox.information(self, "Успех", f"Лицензия для '{LICENSED_TASKS[task]}' успешно удалена.")
+            else:
+                QMessageBox.information(self, "Инфо", "Для этой суб-модели и так нет лицензии.")
+
     class MainWindow(QMainWindow):
         """Главное окно графического интерфейса приложения."""
         def __init__(self):
@@ -1006,6 +1152,29 @@ if PYQT_AVAILABLE:
             color_group_layout.addWidget(color_preset_label)
             color_group_layout.addWidget(self.color_preset_combo)
             tab2_layout.addWidget(color_group)
+
+            # Группа 5: Лицензирование суб-моделей ИИ
+            license_group = QGroupBox("Лицензии суб-моделей ИИ 🔑")
+            license_group_layout = QVBoxLayout(license_group)
+            
+            lbl_license_descr = QLabel(
+                "Некоторые суб-модели (например, отделы головного мозга) требуют активации лицензионных ключей "
+                "TotalSegmentator."
+            )
+            lbl_license_descr.setWordWrap(True)
+            lbl_license_descr.setStyleSheet("color: #888888; font-size: 11px;")
+            
+            self.btn_manage_licenses = QPushButton("🔑 Управление лицензиями")
+            self.btn_manage_licenses.setObjectName("btnAction")
+            self.btn_manage_licenses.clicked.connect(self.show_licenses_dialog)
+            
+            self.lbl_license_status = QLabel("Загружено лицензий: 0")
+            self.lbl_license_status.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+            
+            license_group_layout.addWidget(lbl_license_descr)
+            license_group_layout.addWidget(self.btn_manage_licenses)
+            license_group_layout.addWidget(self.lbl_license_status)
+            tab2_layout.addWidget(license_group)
 
             # Звук в конце
             self.sound_check = QCheckBox("🔔 Звук при завершении автооконтуривания")
@@ -1354,6 +1523,7 @@ if PYQT_AVAILABLE:
 
             # Инициализация списков пресетов и органов из presets.json движка
             self.init_presets_and_organs()
+            self.update_license_status_label()
 
             # Установка палитры по умолчанию на Цвета QUANTEC
             self.palette_combo.setCurrentText("Цвета QUANTEC")
@@ -1367,6 +1537,19 @@ if PYQT_AVAILABLE:
             self.color_preset_combo.currentIndexChanged.connect(self.save_settings)
             
             self.splitter.setSizes([430, 490])
+
+        def update_license_status_label(self):
+            """Обновляет текст статуса количества активных лицензий."""
+            count = len(getattr(self.engine, "licenses", {}))
+            self.lbl_license_status.setText(f"Активных лицензий: {count}")
+
+        def show_licenses_dialog(self):
+            """Открывает окно управления лицензиями суб-моделей ИИ."""
+            dialog = LicensesDialog(self, self.engine)
+            dialog.exec()
+            # После закрытия диалога обновляем статус-лейбл и список органов
+            self.update_license_status_label()
+            self.init_presets_and_organs()
 
         def on_sound_check_changed(self):
             self.save_settings()
@@ -1413,9 +1596,21 @@ if PYQT_AVAILABLE:
                     placed_organs.add(org)
                     # Проверяем, есть ли такой орган в ru_names
                     ru_name = self.engine.ru_names.get(org, org)
-                    item = QListWidgetItem(f"   {ru_name}")
-                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    item.setCheckState(Qt.CheckState.Unchecked)
+                    
+                    # Проверка лицензии для суб-моделей
+                    task = ROI_TO_TASK_MAP.get(org, 'total')
+                    is_licensed_task = task in LICENSED_TASKS
+                    has_license = hasattr(self.engine, "licenses") and self.engine.licenses.get(task)
+                    
+                    if is_licensed_task and not has_license:
+                        item = QListWidgetItem(f"   [🔒] {ru_name} (Нужна лицензия)")
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable & ~Qt.ItemFlag.ItemIsEnabled)
+                        item.setForeground(QBrush(QColor("#777777")))
+                    else:
+                        item = QListWidgetItem(f"   {ru_name}")
+                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                        item.setCheckState(Qt.CheckState.Unchecked)
+                        
                     item.setData(Qt.ItemDataRole.UserRole, org)
                     
                     # Установка цветного квадратика-иконки для OAR
@@ -1465,9 +1660,21 @@ if PYQT_AVAILABLE:
                 
                 for org in other_organs:
                     ru_name = self.engine.ru_names.get(org, org)
-                    item = QListWidgetItem(f"   {ru_name}")
-                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    item.setCheckState(Qt.CheckState.Unchecked)
+                    
+                    # Проверка лицензии для суб-моделей
+                    task = ROI_TO_TASK_MAP.get(org, 'total')
+                    is_licensed_task = task in LICENSED_TASKS
+                    has_license = hasattr(self.engine, "licenses") and self.engine.licenses.get(task)
+                    
+                    if is_licensed_task and not has_license:
+                        item = QListWidgetItem(f"   [🔒] {ru_name} (Нужна лицензия)")
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable & ~Qt.ItemFlag.ItemIsEnabled)
+                        item.setForeground(QBrush(QColor("#777777")))
+                    else:
+                        item = QListWidgetItem(f"   {ru_name}")
+                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                        item.setCheckState(Qt.CheckState.Unchecked)
+                        
                     item.setData(Qt.ItemDataRole.UserRole, org)
                     self.update_item_color_icon(item, org)
                     self.organs_list.addItem(item)
@@ -2805,7 +3012,9 @@ if PYQT_AVAILABLE:
             if preset_name == "Пользовательский (Custom)":
                 return
 
-            if preset_name == "Все органы (All)":
+            if preset_name in ORGAN_GROUPS:
+                target_organs = ORGAN_GROUPS[preset_name]
+            elif preset_name == "Все органы (All)":
                 target_organs = self.engine.get_all_supported_organs()
             else:
                 target_organs_raw = self.engine.presets.get(preset_name, [])
@@ -2828,7 +3037,16 @@ if PYQT_AVAILABLE:
                     if item.data(Qt.ItemDataRole.UserRole + 1) is True:
                         continue
                     if organ_name in target_organs:
-                        item.setCheckState(Qt.CheckState.Checked)
+                        # Проверяем, не заблокирован ли орган из-за отсутствия лицензии
+                        task = ROI_TO_TASK_MAP.get(organ_name, 'total')
+                        is_licensed_task = task in LICENSED_TASKS
+                        has_license = hasattr(self.engine, "licenses") and self.engine.licenses.get(task)
+                        
+                        if is_licensed_task and not has_license:
+                            # Заблокированный орган не чекаем пресетом
+                            item.setCheckState(Qt.CheckState.Unchecked)
+                        else:
+                            item.setCheckState(Qt.CheckState.Checked)
                     else:
                         item.setCheckState(Qt.CheckState.Unchecked)
             finally:

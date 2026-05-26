@@ -10,7 +10,7 @@
 # Глобальный словарь маппинга органов на таски TotalSegmentator
 ROI_TO_TASK_MAP = {
     # Отделы головного мозга (brain_structures)
-    'brain': 'brain_structures',
+    'brain': 'total',
     'brain_stem': 'brain_structures',
     'brainstem': 'brain_structures',
     'cerebellum': 'brain_structures',
@@ -26,6 +26,17 @@ ROI_TO_TASK_MAP = {
     'putamen_right': 'brain_structures',
     'pallidum_left': 'brain_structures',
     'pallidum_right': 'brain_structures',
+    'subarachnoid_space': 'brain_structures',
+    'venous_sinuses': 'brain_structures',
+    'septum_pellucidum': 'brain_structures',
+    'insular_cortex': 'brain_structures',
+    'internal_capsule': 'brain_structures',
+    'ventricle': 'brain_structures',
+    'central_sulcus': 'brain_structures',
+    'frontal_lobe': 'brain_structures',
+    'parietal_lobe': 'brain_structures',
+    'occipital_lobe': 'brain_structures',
+    'temporal_lobe': 'brain_structures',
 
     # Мелкие органы головы (head_glands_cavities)
     'eye_left': 'head_glands_cavities',
@@ -71,7 +82,7 @@ MONACO_NAMES_MAP = {
 # Строго зафиксированная структура анатомических групп OAR сверху вниз по телу человека
 ORGAN_GROUPS = {
     "Голова и шея (Head & Neck)": [
-        "eye_left", "eye_right", "lens_left", "lens_right", "optic_nerve_left", "optic_nerve_right",
+        "brain", "eye_left", "eye_right", "lens_left", "lens_right", "optic_nerve_left", "optic_nerve_right",
         "spinal_cord", "thyroid_gland", "skull", "common_carotid_artery_left", "common_carotid_artery_right",
         "parotid_gland_left", "parotid_gland_right", "submandibular_gland_left", "submandibular_gland_right",
         "nasal_cavity_left", "nasal_cavity_right", "nasopharynx", "oropharynx", "hypopharynx",
@@ -93,9 +104,10 @@ ORGAN_GROUPS = {
         "gluteus_minimus_left", "gluteus_minimus_right"
     ],
     "Отделы головного мозга (Brain Structures)": [
-        "brain", "brain_stem", "cerebellum", "thalamus_left", "thalamus_right", "hippocampus_left", "hippocampus_right",
-        "amygdala_left", "amygdala_right", "caudate_left", "caudate_right", "putamen_left", "putamen_right",
-        "pallidum_left", "pallidum_right"
+        "brain_stem", "cerebellum", "thalamus_left", "thalamus_right", "caudate_left", "caudate_right",
+        "putamen_left", "putamen_right", "pallidum_left", "pallidum_right",
+        "ventricle", "subarachnoid_space", "venous_sinuses", "septum_pellucidum", "internal_capsule",
+        "frontal_lobe", "parietal_lobe", "occipital_lobe", "temporal_lobe", "insular_cortex"
     ]
 }
 
@@ -300,3 +312,9 @@ EXTERNAL_ALIASES = {
     "pallidumright": "pallidum_right",
     "pallidumr": "pallidum_right",
 }
+
+# Список суб-моделей ИИ, требующих отдельной академической или коммерческой лицензии
+LICENSED_TASKS = {
+    "brain_structures": "Отделы головного мозга (Brain Structures)"
+}
+

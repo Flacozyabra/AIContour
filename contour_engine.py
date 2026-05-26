@@ -42,13 +42,13 @@ from scipy.ndimage import label, gaussian_filter
 # Настройка локального логера движка
 logger = logging.getLogger("ContourEngine")
 
-from config import ROI_TO_TASK_MAP, FILE_NAME_MAP, MONACO_NAMES_MAP
+from config import ROI_TO_TASK_MAP, FILE_NAME_MAP, MONACO_NAMES_MAP, LICENSED_TASKS
 
 # Дефолтные настройки для автогенерации presets.json при его отсутствии
 DEFAULT_PRESETS_DATA = {
     "presets": {
         "Голова и шея (Head & Neck)": [
-            "eye_left", "eye_right", "lens_left", "lens_right", "optic_nerve_left", "optic_nerve_right",
+            "brain", "eye_left", "eye_right", "lens_left", "lens_right", "optic_nerve_left", "optic_nerve_right",
             "spinal_cord", "thyroid_gland", "skull", "common_carotid_artery_left", "common_carotid_artery_right",
             "parotid_gland_left", "parotid_gland_right", "submandibular_gland_left", "submandibular_gland_right",
             "nasal_cavity_left", "nasal_cavity_right", "nasopharynx", "oropharynx", "hypopharynx",
@@ -70,9 +70,10 @@ DEFAULT_PRESETS_DATA = {
             "gluteus_minimus_left", "gluteus_minimus_right"
         ],
         "Отделы головного мозга (Brain Structures)": [
-            "brain", "brain_stem", "cerebellum", "thalamus_left", "thalamus_right", "hippocampus_left", "hippocampus_right",
-            "amygdala_left", "amygdala_right", "caudate_left", "caudate_right", "putamen_left", "putamen_right",
-            "pallidum_left", "pallidum_right"
+            "brain_stem", "cerebellum", "thalamus_left", "thalamus_right", "caudate_left", "caudate_right",
+            "putamen_left", "putamen_right", "pallidum_left", "pallidum_right",
+            "ventricle", "subarachnoid_space", "venous_sinuses", "septum_pellucidum", "internal_capsule",
+            "frontal_lobe", "parietal_lobe", "occipital_lobe", "temporal_lobe", "insular_cortex"
         ],
         "Остальное": []
     },
@@ -241,6 +242,17 @@ class ContourEngine:
             "brain_stem": "Ствол мозга (Brain Stem)",
             "cerebellum": "Мозжечок (Cerebellum)",
             "ventricle_system": "Система желудочков мозга (Ventricles)",
+            "ventricle": "Желудочки мозга (Ventricles)",
+            "subarachnoid_space": "Субарахноидальное пространство (Subarachnoid Space)",
+            "venous_sinuses": "Венозные синусы (Venous Sinuses)",
+            "septum_pellucidum": "Прозрачная перегородка (Septum Pellucidum)",
+            "insular_cortex": "Островковая кора (Insular Cortex)",
+            "internal_capsule": "Внутренняя капсула (Internal Capsule)",
+            "central_sulcus": "Центральная борозда (Central Sulcus)",
+            "frontal_lobe": "Лобная доля (Frontal Lobe)",
+            "parietal_lobe": "Теменная доля (Parietal Lobe)",
+            "occipital_lobe": "Затылочная доля (Occipital Lobe)",
+            "temporal_lobe": "Височная доля (Temporal Lobe)",
             "lingual_tonsil": "Язычная миндалина (Lingual Tonsil)",
             "nasopharynx": "Носоглотка (Nasopharynx)",
             "oropharynx": "Ротоглотка (Oropharynx)",
@@ -405,7 +417,15 @@ class ContourEngine:
         """Сравнивает текущие ru_names/colors с полным списком и дополняет их."""
         all_organs = self.get_all_supported_organs()
         if not all_organs:
-            return
+            all_organs = []
+        else:
+            all_organs = list(all_organs)
+
+        from config import ORGAN_GROUPS
+        for group, organs in ORGAN_GROUPS.items():
+            for org in organs:
+                if org not in all_organs:
+                    all_organs.append(org)
 
         changed = False
         full_total_preset = []
@@ -428,9 +448,21 @@ class ContourEngine:
                 self.ru_names[org] = self.translate_organ_to_ru(org)
                 changed = True
 
+        # Гарантируем переводы и дефолтные цвета для всех структур, объявленных в ORGAN_GROUPS из config
+        from config import ORGAN_GROUPS
+        for group, organs in ORGAN_GROUPS.items():
+            for org in organs:
+                has_cyrillic_org = org in self.ru_names and any(u'\u0400' <= char <= u'\u04FF' for char in self.ru_names[org])
+                if org not in self.ru_names or self.ru_names[org] == org or not has_cyrillic_org:
+                    self.ru_names[org] = self.translate_organ_to_ru(org)
+                    changed = True
+                if org not in self.colors:
+                    self.colors[org] = self._get_default_color(org)
+                    changed = True
+
         # Обновляем пресеты до 6 строгих групп согласно ТЗ + Full Total
         head_neck_base = [
-            "eye_left", "eye_right", "lens_left", "lens_right", "optic_nerve_left", "optic_nerve_right",
+            "brain", "eye_left", "eye_right", "lens_left", "lens_right", "optic_nerve_left", "optic_nerve_right",
             "spinal_cord", "thyroid_gland", "skull", "common_carotid_artery_left", "common_carotid_artery_right",
             "parotid_gland_left", "parotid_gland_right", "submandibular_gland_left", "submandibular_gland_right",
             "nasal_cavity_left", "nasal_cavity_right", "nasopharynx", "oropharynx", "hypopharynx",
@@ -452,13 +484,14 @@ class ContourEngine:
             "gluteus_minimus_left", "gluteus_minimus_right"
         ]
         brain_structs_base = [
-            "brain", "brain_stem", "cerebellum", "thalamus_left", "thalamus_right", "hippocampus_left", "hippocampus_right",
-            "amygdala_left", "amygdala_right", "caudate_left", "caudate_right", "putamen_left", "putamen_right",
-            "pallidum_left", "pallidum_right"
+            "brain_stem", "cerebellum", "thalamus_left", "thalamus_right", "caudate_left", "caudate_right",
+            "putamen_left", "putamen_right", "pallidum_left", "pallidum_right",
+            "ventricle", "subarachnoid_space", "venous_sinuses", "septum_pellucidum", "internal_capsule",
+            "frontal_lobe", "parietal_lobe", "occipital_lobe", "temporal_lobe", "insular_cortex"
         ]
 
         # Эвристические списки ключевых слов для автоматического распределения 300+ дополнительных структур
-        brain_keywords = ['brain', 'ventricle', 'thalamus', 'hippocampus', 'amygdala', 'caudate', 'putamen', 'pallidum', 'cerebellum', 'cortex', 'capsule', 'hemorrhage', 'subarachnoid', 'temporal_lobe', 'occipital_lobe', 'frontal_lobe', 'parietal_lobe', 'lentiform']
+        brain_keywords = ['ventricle', 'thalamus', 'caudate', 'putamen', 'pallidum', 'cerebellum', 'cortex', 'capsule', 'hemorrhage', 'subarachnoid', 'temporal_lobe', 'occipital_lobe', 'frontal_lobe', 'parietal_lobe', 'lentiform']
         head_neck_keywords = ['eye', 'lens', 'optic', 'thyroid', 'skull', 'carotid', 'jugular', 'parotid', 'submandibular', 'nasal', 'nasopharynx', 'oropharynx', 'hypopharynx', 'palate', 'auditory', 'mandible', 'maxilla', 'jawbone', 'teeth', 'tooth', 'tongue', 'zygomatic', 'vocal_cords', 'larynx', 'pharynx', 'masseter', 'temporalis', 'buccinator', 'pterygoid', 'digastric', 'mylohyoid', 'geniohyoid', 'sternohyoid', 'omohyoid', 'thyrohyoid', 'sternothyroid', 'platysma', 'prevertebral', 'scalene', 'longus', 'capitis', 'sinus', 'alveolar_canal', 'incisive_canal', 'gland', 'face', 'head', 'rectus_muscle', 'oblique_muscle', 'levator_palpebrae', 'constrictor', 'cartilage', 'hyoid', 'vocal']
         thorax_keywords = ['heart', 'lung', 'trachea', 'esophagus', 'aorta', 'pulmonary', 'superior_vena_cava', 'sternum', 'clavicula', 'clavicle', 'scapula', 'humerus', 'pericardium', 'mediastinum', 'thoracic_cavity', 'subclavian', 'brachiocephalic', 'atrial_appendage', 'left_coronary_cusp', 'right_coronary_cusp', 'non_coronary_cusp', 'coronary', 'pleural', 'bronchia', 'thymus', 'breast']
         abdomen_keywords = ['spleen', 'kidney', 'gallbladder', 'liver', 'stomach', 'pancreas', 'duodenum', 'adrenal', 'portal_vein', 'splenic_vein', 'small_bowel', 'colon', 'abdominal_cavity', 'inferior_vena_cava', 'celiac', 'mesenteric', 'gastric', 'splenic_artery', 'hepatic', 'renal', 'biliary', 'pancreatic', 'duodenal']
@@ -492,8 +525,6 @@ class ContourEngine:
                 abdomen.append(org)
             elif any(k in org for k in ['heart_ventricle', 'heart_atrium', 'heart_myocardium']):
                 thorax.append(org)
-            elif any(k in org for k in brain_keywords) and 'heart_ventricle' not in org:
-                brain_structs.append(org)
             elif any(k in org for k in head_neck_keywords):
                 head_neck.append(org)
             elif any(k in org for k in thorax_keywords):
@@ -540,6 +571,7 @@ class ContourEngine:
             self.presets = data.get("presets", DEFAULT_PRESETS_DATA["presets"])
             self.colors = data.get("colors", DEFAULT_PRESETS_DATA["colors"])
             self.ru_names = data.get("ru_names", DEFAULT_PRESETS_DATA["ru_names"])
+            self.licenses = data.get("licenses", {})
             logger.info("Конфигурация пресетов успешно загружена.")
             
             # Динамическое дополнение до 117 классов TotalSegmentator
@@ -550,6 +582,7 @@ class ContourEngine:
             self.presets = DEFAULT_PRESETS_DATA["presets"]
             self.colors = DEFAULT_PRESETS_DATA["colors"]
             self.ru_names = DEFAULT_PRESETS_DATA["ru_names"]
+            self.licenses = {}
 
     def save_presets_config(self) -> None:
         """
@@ -559,7 +592,8 @@ class ContourEngine:
             data = {
                 "presets": self.presets,
                 "colors": self.colors,
-                "ru_names": self.ru_names
+                "ru_names": self.ru_names,
+                "licenses": getattr(self, "licenses", {})
             }
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -911,8 +945,13 @@ class ContourEngine:
                     str(totalseg_exe),
                     "-i", str(nifti_ct_path),
                     "-o", str(segmentation_dir),
-                    "--device", device
+                    "--device", device,
+                    "--nr_thr_resamp", "1",
+                    "--nr_thr_saving", "1"
                 ]
+                
+                if hasattr(self, "licenses") and self.licenses.get(task_name):
+                    cmd.extend(["--license", self.licenses[task_name]])
                 
                 if precision_mode == "fast" or precision_mode == "faster":
                     if task_name == "total" or task_name == "body":
@@ -1004,7 +1043,6 @@ class ContourEngine:
                 if is_cancelled_cb and is_cancelled_cb():
                     raise RuntimeError("Операция отменена пользователем.")
                 logger.info("--- Доп. задача: Программный расчет контура тела без ИИ (Fast Classic Skin) ---")
-                
                 try:
                     import scipy.ndimage
                     if nifti_ct_path.exists():
@@ -1043,13 +1081,14 @@ class ContourEngine:
                     logger.error(f"Ошибка при программном расчете контура тела: {body_err}", exc_info=True)
 
             # ----------------------------------------------------------------------
-            # Постобработка: сборка виртуальных органов (легкие)
+            # Постобработка: сборка виртуальных органов (легкие, ствол мозга)
             # ----------------------------------------------------------------------
-            logger.info("--- Постобработка: Сборка цельных легких из долей ИИ ---")
+            logger.info("--- Постобработка: Сборка цельных легких и ствола мозга из частей ---")
             try:
                 POST_VIRTUAL_MAP = {
                     "lung_left": ["lung_upper_lobe_left", "lung_lower_lobe_left"],
-                    "lung_right": ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"]
+                    "lung_right": ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"],
+                    "brain_stem": ["brainstem"]
                 }
                 
                 for virtual_organ, parts in POST_VIRTUAL_MAP.items():
@@ -1057,7 +1096,7 @@ class ContourEngine:
                     existing_part_files = [f for f in part_files if f.exists()]
                     
                     if existing_part_files:
-                        logger.info(f"Сборка цельного органа '{virtual_organ}' из долей: {[f.name for f in existing_part_files]}")
+                        logger.info(f"Сборка цельного органа '{virtual_organ}' из частей: {[f.name for f in existing_part_files]}")
                         base_nii = nib.load(str(existing_part_files[0]))
                         base_data = base_nii.get_fdata() > 0.5
                         
@@ -1071,12 +1110,55 @@ class ContourEngine:
                         logger.info(f"Цельный орган успешно собран и сохранен как: {merged_file_path.name}")
                         
                         for part_file in existing_part_files:
-                            try:
-                                part_file.unlink()
-                            except Exception as e:
-                                logger.debug(f"Не удалось удалить файл части {part_file.name}: {e}")
+                            if part_file.name != f"{virtual_organ}.nii.gz":
+                                try:
+                                    part_file.unlink()
+                                except Exception as e:
+                                    logger.debug(f"Не удалось удалить файл части {part_file.name}: {e}")
             except Exception as e:
                 logger.error(f"Не удалось завершить сборку виртуальных органов: {e}")
+
+            # --------------------------------------------------------------
+            # Постобработка: расщепление комбинированных структур мозга на Left/Right
+            # --------------------------------------------------------------
+            logger.info("--- Постобработка: Расщепление комбинированных структур мозга на L/R ---")
+            try:
+                SPLIT_MAP = {
+                    "thalamus": ["thalamus_left", "thalamus_right"],
+                    "caudate_nucleus": ["caudate_left", "caudate_right"],
+                    "lentiform_nucleus": ["putamen_left", "putamen_right", "pallidum_left", "pallidum_right"]
+                }
+                
+                for combined_org, target_parts in SPLIT_MAP.items():
+                    combined_file = segmentation_dir / f"{combined_org}.nii.gz"
+                    if combined_file.exists():
+                        logger.info(f"Обнаружена комбинированная маска '{combined_org}', расщепление на {target_parts}...")
+                        nii = nib.load(str(combined_file))
+                        data = nii.get_fdata()
+                        affine = nii.affine
+                        header = nii.header
+                        
+                        width = data.shape[0]
+                        mid = width // 2
+                        
+                        for part in target_parts:
+                            part_data = np.zeros_like(data)
+                            if "left" in part or "l" in part.split("_")[-1]:
+                                part_data[:mid, :, :] = data[:mid, :, :]
+                            else:
+                                part_data[mid:, :, :] = data[mid:, :, :]
+                                
+                            if np.any(part_data > 0.5):
+                                part_nii = nib.Nifti1Image(part_data.astype(np.uint8), affine, header)
+                                part_file_path = segmentation_dir / f"{part}.nii.gz"
+                                nib.save(part_nii, str(part_file_path))
+                                logger.info(f"  Успешно создана маска полушария: {part_file_path.name}")
+                            else:
+                                logger.info(f"  Маска {part} пуста после расщепления, пропускаем.")
+                                
+                        combined_file.unlink()
+            except Exception as split_err:
+                logger.error(f"Ошибка при расщеплении комбинированных структур: {split_err}")
 
             if is_cancelled_cb and is_cancelled_cb():
                 raise RuntimeError("Операция отменена пользователем.")
