@@ -1,575 +1,277 @@
 {
   "presets": {
     "Голова и шея (Head & Neck)": [
-      "auditory_canal_left",
-      "auditory_canal_right",
-      "brain",
-      "common_carotid_artery_left",
-      "common_carotid_artery_right",
-      "costal_cartilages",
+      "body",
       "eye_left",
-      "eye_lens_left",
-      "eye_lens_right",
       "eye_right",
-      "face",
-      "hard_palate",
-      "hypopharynx",
-      "nasal_cavity_left",
-      "nasal_cavity_right",
-      "nasopharynx",
-      "optic_nerve_left",
-      "optic_nerve_right",
-      "oropharynx",
-      "parotid_gland_left",
-      "parotid_gland_right",
-      "skull",
-      "soft_palate",
-      "spinal_cord",
-      "submandibular_gland_left",
-      "submandibular_gland_right",
-      "thyroid_gland",
-      "lens_left",
-      "lens_right"
-    ],
-    "Грудная клетка (Thorax)": [
-      "aorta",
-      "atrial_appendage_left",
-      "brachiocephalic_trunk",
-      "brachiocephalic_vein_left",
-      "brachiocephalic_vein_right",
-      "clavicula_left",
-      "clavicula_right",
-      "esophagus",
-      "heart",
-      "heart_atrium_left",
-      "heart_atrium_right",
-      "heart_myocardium",
-      "heart_ventricle_left",
-      "heart_ventricle_right",
-      "humerus_left",
-      "humerus_right",
-      "lung_lower_lobe_left",
-      "lung_lower_lobe_right",
-      "lung_middle_lobe_right",
-      "lung_upper_lobe_left",
-      "lung_upper_lobe_right",
-      "pulmonary_artery",
-      "pulmonary_vein",
-      "scapula_left",
-      "scapula_right",
-      "sternum",
-      "subclavian_artery_left",
-      "subclavian_artery_right",
-      "superior_vena_cava",
-      "trachea",
-      "lung_left",
-      "lung_right"
-    ],
-    "Брюшная полость (Abdomen)": [
-      "adrenal_gland_left",
-      "adrenal_gland_right",
-      "colon",
-      "duodenum",
-      "gallbladder",
-      "inferior_vena_cava",
-      "kidney_cyst_left",
-      "kidney_cyst_right",
-      "kidney_left",
-      "kidney_right",
-      "liver",
-      "pancreas",
-      "portal_vein_and_splenic_vein",
-      "small_bowel",
-      "spleen",
-      "stomach"
-    ],
-    "Малый таз (Pelvis)": [
-      "femur_left",
-      "femur_right",
-      "gluteus_maximus_left",
-      "gluteus_maximus_right",
-      "gluteus_medius_left",
-      "gluteus_medius_right",
-      "gluteus_minimus_left",
-      "gluteus_minimus_right",
-      "hip_left",
-      "hip_right",
-      "iliac_artery_left",
-      "iliac_artery_right",
-      "iliac_vena_left",
-      "iliac_vena_right",
-      "iliopsoas_left",
-      "iliopsoas_right",
-      "prostate",
-      "sacrum",
-      "urinary_bladder",
-      "rectum",
-      "iliac_vein_left",
-      "iliac_vein_right"
-    ],
-    "Отделы головного мозга (Brain Structures)": [
-      "cerebellum",
-      "frontal_lobe",
-      "insular_cortex",
-      "internal_capsule",
-      "occipital_lobe",
-      "parietal_lobe",
-      "septum_pellucidum",
-      "subarachnoid_space",
-      "temporal_lobe",
-      "venous_sinuses",
-      "ventricle",
-      "brain_stem",
-      "thalamus_left",
-      "thalamus_right",
-      "caudate_left",
-      "caudate_right",
-      "putamen_left",
-      "putamen_right",
-      "pallidum_left",
-      "pallidum_right"
-    ],
-    "Остальное": [
-      "autochthon_left",
-      "autochthon_right",
-      "brainstem",
-      "caudate_nucleus",
-      "central_sulcus",
-      "lentiform_nucleus",
-      "rib_left_1",
-      "rib_left_10",
-      "rib_left_11",
-      "rib_left_12",
-      "rib_left_2",
-      "rib_left_3",
-      "rib_left_4",
-      "rib_left_5",
-      "rib_left_6",
-      "rib_left_7",
-      "rib_left_8",
-      "rib_left_9",
-      "rib_right_1",
-      "rib_right_10",
-      "rib_right_11",
-      "rib_right_12",
-      "rib_right_2",
-      "rib_right_3",
-      "rib_right_4",
-      "rib_right_5",
-      "rib_right_6",
-      "rib_right_7",
-      "rib_right_8",
-      "rib_right_9",
-      "thalamus",
-      "vertebrae_C1",
-      "vertebrae_C2",
-      "vertebrae_C3",
-      "vertebrae_C4",
-      "vertebrae_C5",
-      "vertebrae_C6",
-      "vertebrae_C7",
-      "vertebrae_L1",
-      "vertebrae_L2",
-      "vertebrae_L3",
-      "vertebrae_L4",
-      "vertebrae_L5",
-      "vertebrae_S1",
-      "vertebrae_T1",
-      "vertebrae_T10",
-      "vertebrae_T11",
-      "vertebrae_T12",
-      "vertebrae_T2",
-      "vertebrae_T3",
-      "vertebrae_T4",
-      "vertebrae_T5",
-      "vertebrae_T6",
-      "vertebrae_T7",
-      "vertebrae_T8",
-      "vertebrae_T9"
-    ],
-    "Все структуры / Full Total": [
-      "adrenal_gland_left",
-      "adrenal_gland_right",
-      "aorta",
-      "atrial_appendage_left",
-      "auditory_canal_left",
-      "auditory_canal_right",
-      "autochthon_left",
-      "autochthon_right",
-      "brachiocephalic_trunk",
-      "brachiocephalic_vein_left",
-      "brachiocephalic_vein_right",
-      "brain",
-      "brainstem",
-      "caudate_nucleus",
-      "central_sulcus",
-      "cerebellum",
-      "clavicula_left",
-      "clavicula_right",
-      "colon",
-      "common_carotid_artery_left",
-      "common_carotid_artery_right",
-      "costal_cartilages",
-      "duodenum",
-      "esophagus",
-      "eye_left",
-      "eye_lens_left",
-      "eye_lens_right",
-      "eye_right",
-      "face",
-      "femur_left",
-      "femur_right",
-      "frontal_lobe",
-      "gallbladder",
-      "gluteus_maximus_left",
-      "gluteus_maximus_right",
-      "gluteus_medius_left",
-      "gluteus_medius_right",
-      "gluteus_minimus_left",
-      "gluteus_minimus_right",
-      "hard_palate",
-      "heart",
-      "heart_atrium_left",
-      "heart_atrium_right",
-      "heart_myocardium",
-      "heart_ventricle_left",
-      "heart_ventricle_right",
-      "hip_left",
-      "hip_right",
-      "humerus_left",
-      "humerus_right",
-      "hypopharynx",
-      "iliac_artery_left",
-      "iliac_artery_right",
-      "iliac_vena_left",
-      "iliac_vena_right",
-      "iliopsoas_left",
-      "iliopsoas_right",
-      "inferior_vena_cava",
-      "insular_cortex",
-      "internal_capsule",
-      "kidney_cyst_left",
-      "kidney_cyst_right",
-      "kidney_left",
-      "kidney_right",
-      "lentiform_nucleus",
-      "liver",
-      "lung_lower_lobe_left",
-      "lung_lower_lobe_right",
-      "lung_middle_lobe_right",
-      "lung_upper_lobe_left",
-      "lung_upper_lobe_right",
-      "nasal_cavity_left",
-      "nasal_cavity_right",
-      "nasopharynx",
-      "occipital_lobe",
-      "optic_nerve_left",
-      "optic_nerve_right",
-      "oropharynx",
-      "pancreas",
-      "parietal_lobe",
-      "parotid_gland_left",
-      "parotid_gland_right",
-      "portal_vein_and_splenic_vein",
-      "prostate",
-      "pulmonary_artery",
-      "pulmonary_vein",
-      "rib_left_1",
-      "rib_left_10",
-      "rib_left_11",
-      "rib_left_12",
-      "rib_left_2",
-      "rib_left_3",
-      "rib_left_4",
-      "rib_left_5",
-      "rib_left_6",
-      "rib_left_7",
-      "rib_left_8",
-      "rib_left_9",
-      "rib_right_1",
-      "rib_right_10",
-      "rib_right_11",
-      "rib_right_12",
-      "rib_right_2",
-      "rib_right_3",
-      "rib_right_4",
-      "rib_right_5",
-      "rib_right_6",
-      "rib_right_7",
-      "rib_right_8",
-      "rib_right_9",
-      "sacrum",
-      "scapula_left",
-      "scapula_right",
-      "septum_pellucidum",
-      "skull",
-      "small_bowel",
-      "soft_palate",
-      "spinal_cord",
-      "spleen",
-      "sternum",
-      "stomach",
-      "subarachnoid_space",
-      "subclavian_artery_left",
-      "subclavian_artery_right",
-      "submandibular_gland_left",
-      "submandibular_gland_right",
-      "superior_vena_cava",
-      "temporal_lobe",
-      "thalamus",
-      "thyroid_gland",
-      "trachea",
-      "urinary_bladder",
-      "venous_sinuses",
-      "ventricle",
-      "vertebrae_C1",
-      "vertebrae_C2",
-      "vertebrae_C3",
-      "vertebrae_C4",
-      "vertebrae_C5",
-      "vertebrae_C6",
-      "vertebrae_C7",
-      "vertebrae_L1",
-      "vertebrae_L2",
-      "vertebrae_L3",
-      "vertebrae_L4",
-      "vertebrae_L5",
-      "vertebrae_S1",
-      "vertebrae_T1",
-      "vertebrae_T10",
-      "vertebrae_T11",
-      "vertebrae_T12",
-      "vertebrae_T2",
-      "vertebrae_T3",
-      "vertebrae_T4",
-      "vertebrae_T5",
-      "vertebrae_T6",
-      "vertebrae_T7",
-      "vertebrae_T8",
-      "vertebrae_T9",
       "lens_left",
       "lens_right",
+      "spinal_cord",
+      "common_carotid_artery_left",
+      "common_carotid_artery_right",
+      "parotid_gland_left",
+      "parotid_gland_right",
+      "submandibular_gland_left",
+      "submandibular_gland_right",
+      "auditory_canal_left",
+      "auditory_canal_right"
+    ],
+    "Грудная клетка (Thorax)": [
+      "body",
+      "heart",
       "lung_left",
       "lung_right",
+      "lungs",
+      "trachea",
+      "esophagus",
+      "aorta",
+      "pulmonary_artery",
+      "superior_vena_cava",
+      "sternum",
+      "humerus_left",
+      "humerus_right",
+      "spinal_cord"
+    ],
+    "Малый таз (Pelvis)": [
+      "body",
+      "small_bowel",
+      "colon",
+      "urinary_bladder",
+      "sacrum",
+      "hip_left",
+      "hip_right",
+      "femur_left",
+      "femur_right",
+      "iliac_artery_left",
+      "iliac_artery_right",
+      "kidney_left",
+      "kidney_right",
+      "spinal_cord",
       "rectum",
-      "iliac_vein_left",
-      "iliac_vein_right",
-      "brain_stem",
-      "thalamus_left",
-      "thalamus_right",
-      "caudate_left",
-      "caudate_right",
-      "putamen_left",
-      "putamen_right",
-      "pallidum_left",
-      "pallidum_right"
+      "prostate"
+    ],
+    "Отделы головного мозга (Brain Structures)": [
+      "brain",
+      "brainstem",
+      "caudate_nucleus",
+      "cerebellum",
+      "frontal_lobe",
+      "insular_cortex",
+      "internal_capsule",
+      "lentiform_nucleus",
+      "occipital_lobe",
+      "parietal_lobe",
+      "subarachnoid_space",
+      "temporal_lobe",
+      "thalamus",
+      "ventricle"
     ]
   },
   "colors": {
     "spleen": [
-      160,
-      32,
-      240
+      255,
+      0,
+      255
     ],
     "kidney_right": [
       0,
-      0,
+      255,
       255
     ],
     "kidney_left": [
-      30,
-      144,
+      0,
+      191,
       255
     ],
     "gallbladder": [
-      0,
+      50,
+      205,
+      50
+    ],
+    "liver": [
+      173,
+      255,
+      47
+    ],
+    "stomach": [
+      255,
+      165,
+      0
+    ],
+    "aorta": [
+      255,
       255,
       0
     ],
-    "liver": [
-      34,
-      139,
-      34
-    ],
-    "stomach": [
-      218,
-      165,
-      32
-    ],
-    "aorta": [
-      55,
-      197,
-      94
-    ],
     "inferior_vena_cava": [
-      194,
-      166,
-      130
+      128,
+      0,
+      255
     ],
     "urinary_bladder": [
       255,
-      215,
+      255,
       0
     ],
     "heart": [
       255,
+      20,
+      147
+    ],
+    "lung_left": [
+      255,
+      0,
+      255
+    ],
+    "lung_right": [
+      255,
+      0,
+      255
+    ],
+    "trachea": [
+      128,
+      255,
+      0
+    ],
+    "esophagus": [
+      0,
+      128,
+      255
+    ],
+    "pancreas": [
+      0,
+      128,
+      255
+    ],
+    "duodenum": [
+      255,
+      255,
+      0
+    ],
+    "adrenal_gland_left": [
+      255,
+      255,
+      0
+    ],
+    "adrenal_gland_right": [
+      255,
+      0,
+      128
+    ],
+    "pulmonary_artery": [
+      0,
+      128,
+      255
+    ],
+    "small_bowel": [
+      0,
+      0,
+      255
+    ],
+    "prostate": [
+      255,
       0,
       0
     ],
-    "lung_left": [
-      86,
-      123,
-      174
-    ],
-    "lung_right": [
-      195,
-      54,
-      110
-    ],
-    "trachea": [
-      149,
-      58,
-      171
-    ],
-    "esophagus": [
-      138,
-      127,
-      103
-    ],
-    "pancreas": [
-      153,
-      97,
-      184
-    ],
-    "duodenum": [
-      168,
-      85,
-      61
-    ],
-    "adrenal_gland_left": [
-      114,
-      125,
-      152
-    ],
-    "adrenal_gland_right": [
-      161,
-      157,
-      200
-    ],
-    "pulmonary_artery": [
-      98,
-      122,
-      139
-    ],
-    "small_bowel": [
-      177,
-      66,
-      127
-    ],
-    "prostate": [
-      152,
-      133,
-      118
-    ],
     "rectum": [
-      139,
-      69,
-      19
+      210,
+      105,
+      30
     ],
     "colon": [
-      191,
-      68,
-      120
+      0,
+      128,
+      255
     ],
     "femur_left": [
-      135,
-      139,
-      183
+      0,
+      255,
+      128
     ],
     "femur_right": [
-      159,
-      155,
-      157
+      128,
+      255,
+      0
     ],
     "hip_left": [
-      146,
-      175,
-      165
+      128,
+      0,
+      255
     ],
     "hip_right": [
-      85,
-      193,
-      174
+      0,
+      0,
+      255
     ],
     "sacrum": [
-      96,
-      111,
-      190
+      255,
+      0,
+      255
     ],
     "spinal_cord": [
-      116,
-      98,
-      57
+      255,
+      0,
+      128
     ],
     "thyroid_gland": [
-      113,
-      52,
-      117
+      0,
+      0,
+      255
     ],
     "skull": [
-      94,
-      188,
-      72
+      255,
+      0,
+      0
     ],
     "brain": [
-      155,
-      169,
-      192
+      0,
+      0,
+      255
     ],
     "common_carotid_artery_left": [
-      51,
-      115,
-      144
+      0,
+      255,
+      0
     ],
     "common_carotid_artery_right": [
-      86,
-      147,
-      196
+      0,
+      0,
+      255
     ],
     "superior_vena_cava": [
-      84,
-      137,
-      160
+      0,
+      128,
+      255
     ],
     "portal_vein_and_splenic_vein": [
-      113,
-      127,
-      112
+      0,
+      255,
+      0
     ],
     "clavicula_left": [
-      144,
-      51,
-      84
+      0,
+      0,
+      255
     ],
     "clavicula_right": [
-      176,
-      73,
-      124
+      255,
+      0,
+      128
     ],
     "sternum": [
-      85,
-      68,
-      152
+      0,
+      255,
+      0
     ],
     "iliac_artery_left": [
-      134,
-      69,
-      129
+      128,
+      0,
+      255
     ],
     "iliac_artery_right": [
-      78,
-      137,
-      190
+      128,
+      0,
+      255
     ],
     "atrial_appendage_left": [
       50,
@@ -1004,27 +706,27 @@
     "eye_left": [
       255,
       255,
-      100
+      0
     ],
     "eye_right": [
       255,
       255,
-      100
+      0
     ],
     "lens_left": [
       255,
-      140,
+      69,
       0
     ],
     "lens_right": [
       255,
-      140,
+      69,
       0
     ],
     "brain_stem": [
-      139,
-      69,
-      19
+      255,
+      105,
+      180
     ],
     "optic_nerve_left": [
       255,
@@ -2466,65 +2168,45 @@
       106,
       215
     ],
+    "body": [
+      0,
+      255,
+      0
+    ],
     "iliac_vein_left": [
-      55,
-      202,
-      254
+      0,
+      100,
+      255
     ],
     "iliac_vein_right": [
-      228,
-      153,
-      98
-    ],
-    "thalamus_left": [
-      51,
-      157,
-      95
-    ],
-    "thalamus_right": [
-      191,
-      174,
-      157
-    ],
-    "caudate_left": [
-      87,
-      84,
-      50
-    ],
-    "caudate_right": [
-      50,
-      89,
-      99
-    ],
-    "putamen_left": [
-      175,
-      182,
-      170
-    ],
-    "putamen_right": [
-      121,
-      50,
-      206
-    ],
-    "pallidum_left": [
-      50,
-      57,
-      74
-    ],
-    "pallidum_right": [
-      93,
-      66,
-      237
+      0,
+      120,
+      255
     ],
     "lungs": [
-      144,
-      151,
-      50
+      198,
+      115,
+      230
     ],
-    "body": [
-      132,
-      50,
-      50
+    "ctv": [
+      255,
+      128,
+      128
+    ],
+    "ptv": [
+      32,
+      255,
+      255
+    ],
+    "uterus": [
+      255,
+      128,
+      64
+    ],
+    "gtv": [
+      255,
+      32,
+      32
     ]
   },
   "ru_names": {
@@ -2675,7 +2357,7 @@
     "bridge": "Bridge (bridge)",
     "carpal": "Carpal (carpal)",
     "caudate_nucleus": "Caudate Nucleus (caudate_nucleus)",
-    "central_sulcus": "Центральная борозда (Central Sulcus)",
+    "central_sulcus": "Central Sulcus (central_sulcus)",
     "cerebellum": "Мозжечок (Cerebellum)",
     "coracobrachial": "Coracobrachial (coracobrachial)",
     "coronary_arteries": "Coronary Arteries (coronary_arteries)",
@@ -2695,7 +2377,7 @@
     "femur": "Femur (femur)",
     "fibula": "Fibula (fibula)",
     "fourth_ventricle": "Fourth Ventricle (fourth_ventricle)",
-    "frontal_lobe": "Лобная доля (Frontal Lobe)",
+    "frontal_lobe": "Frontal Lobe (frontal_lobe)",
     "hard_palate": "Hard Palate (hard_palate)",
     "head": "Head (head)",
     "hip_implant": "Hip Implant (hip_implant)",
@@ -2709,9 +2391,9 @@
     "inferior_rectus_muscle_left": "Inferior Rectus Muscle Left (inferior_rectus_muscle_left)",
     "inferior_rectus_muscle_right": "Inferior Rectus Muscle Right (inferior_rectus_muscle_right)",
     "infraspinatus": "Infraspinatus (infraspinatus)",
-    "insular_cortex": "Островковая кора (Insular Cortex)",
+    "insular_cortex": "Insular Cortex (insular_cortex)",
     "intermuscular_fat": "Intermuscular Fat (intermuscular_fat)",
-    "internal_capsule": "Внутренняя капсула (Internal Capsule)",
+    "internal_capsule": "Internal Capsule (internal_capsule)",
     "internal_carotid_artery_left": "Левая внутренняя сонная артерия (Internal Carotid A L)",
     "internal_carotid_artery_right": "Правая внутренняя сонная артерия (Internal Carotid A R)",
     "internal_jugular_vein_left": "Левая внутренняя яремная вена (Jugular Vein L)",
@@ -2809,9 +2491,9 @@
     "nasal_cavity_right": "Nasal Cavity Right (nasal_cavity_right)",
     "nasopharynx": "Носоглотка (Nasopharynx)",
     "non_coronary_cusp": "Non Coronary Cusp (non_coronary_cusp)",
-    "occipital_lobe": "Затылочная доля (Occipital Lobe)",
+    "occipital_lobe": "Occipital Lobe (occipital_lobe)",
     "oropharynx": "Ротоглотка (Oropharynx)",
-    "parietal_lobe": "Теменная доля (Parietal Lobe)",
+    "parietal_lobe": "Parietal Lobe (parietal_lobe)",
     "parotid_gland_left": "Левая околоушная слюнная железа (Parotid Gland L)",
     "parotid_gland_right": "Правая околоушная слюнная железа (Parotid Gland R)",
     "patella": "Patella (patella)",
@@ -2845,7 +2527,7 @@
     "right_maxillary_sinus": "Right Maxillary Sinus (right_maxillary_sinus)",
     "sartorius_left": "Sartorius Left (sartorius_left)",
     "sartorius_right": "Sartorius Right (sartorius_right)",
-    "septum_pellucidum": "Прозрачная перегородка (Septum Pellucidum)",
+    "septum_pellucidum": "Septum Pellucidum (septum_pellucidum)",
     "serratus_anterior": "Serratus Anterior (serratus_anterior)",
     "serratus_anterior_left": "Serratus Anterior Left (serratus_anterior_left)",
     "serratus_anterior_right": "Serratus Anterior Right (serratus_anterior_right)",
@@ -2859,7 +2541,7 @@
     "sternocleidomastoid_right": "Правая грудино-ключично-сосцевидная мышца (Sternocleidomastoid R)",
     "styloid_process_left": "Styloid Process Left (styloid_process_left)",
     "styloid_process_right": "Styloid Process Right (styloid_process_right)",
-    "subarachnoid_space": "Субарахноидальное пространство (Subarachnoid Space)",
+    "subarachnoid_space": "Subarachnoid Space (subarachnoid_space)",
     "subcutaneous_fat": "Subcutaneous Fat (subcutaneous_fat)",
     "submandibular_gland_left": "Левая поднижнечелюстная слюнная железа (Submandibular Gland L)",
     "submandibular_gland_right": "Правая поднижнечелюстная слюнная железа (Submandibular Gland R)",
@@ -2873,7 +2555,7 @@
     "tarsal": "Tarsal (tarsal)",
     "teeth_lower": "Teeth Lower (teeth_lower)",
     "teeth_upper": "Teeth Upper (teeth_upper)",
-    "temporal_lobe": "Височная доля (Temporal Lobe)",
+    "temporal_lobe": "Temporal Lobe (temporal_lobe)",
     "temporalis_left": "Левая височная мышца (Temporalis L)",
     "temporalis_right": "Правая височная мышца (Temporalis R)",
     "teres_major": "Teres Major (teres_major)",
@@ -2930,8 +2612,8 @@
     "upper_right_second_premolar_pulp_fdi115": "Upper Right Second Premolar Pulp Fdi115 (upper_right_second_premolar_pulp_fdi115)",
     "upper_right_third_molar_fdi18": "Upper Right Third Molar Fdi18 (upper_right_third_molar_fdi18)",
     "upper_right_third_molar_pulp_fdi118": "Upper Right Third Molar Pulp Fdi118 (upper_right_third_molar_pulp_fdi118)",
-    "venous_sinuses": "Венозные синусы (Venous Sinuses)",
-    "ventricle": "Желудочки мозга (Ventricles)",
+    "venous_sinuses": "Venous Sinuses (venous_sinuses)",
+    "ventricle": "Ventricle (ventricle)",
     "ventricle_body_left": "Ventricle Body Left (ventricle_body_left)",
     "ventricle_body_right": "Ventricle Body Right (ventricle_body_right)",
     "ventricle_frontal_horn_left": "Ventricle Frontal Horn Left (ventricle_frontal_horn_left)",
@@ -2946,18 +2628,9 @@
     "vertebrae_body": "Vertebrae Body (vertebrae_body)",
     "zygomatic_arch_left": "Левая скуловая дуга (Zygomatic Arch L)",
     "zygomatic_arch_right": "Правая скуловая дуга (Zygomatic Arch R)",
-    "iliac_vein_left": "Левая подвздошная вена (Iliac Vein L)",
-    "iliac_vein_right": "Правая подвздошная вена (Iliac Vein R)",
-    "thalamus_left": "Левый таламус (Thalamus L)",
-    "thalamus_right": "Правый таламус (Thalamus R)",
-    "caudate_left": "Левое хвостатое ядро (Caudate L)",
-    "caudate_right": "Правое хвостатое ядро (Caudate R)",
-    "putamen_left": "Левая скорлупа мозга (Putamen L)",
-    "putamen_right": "Правая скорлупа мозга (Putamen R)",
-    "pallidum_left": "Левый бледный шар (Pallidum L)",
-    "pallidum_right": "Правый бледный шар (Pallidum R)",
-    "lungs": "Lungs (lungs)",
-    "body": "Тело (Body)"
-  },
-  "licenses": "aca_4HM59KBYQ6ODB2"
+    "body": "Тело (Body / Skin)",
+    "iliac_vein_left": "Левая подвздошная вена (Left Iliac Vein)",
+    "iliac_vein_right": "Правая подвздошная вена (Right Iliac Vein)",
+    "lungs": "Легкие (Lungs Total)"
+  }
 }
