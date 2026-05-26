@@ -1543,9 +1543,19 @@ class ContourEngine:
                     # ------------------------------------------------------------------
                     # ПОСТОБРАБОТКА МАСОК (Remove small blobs & Smoothing)
                     # ------------------------------------------------------------------
-                    TINY_ORGANS = {"lens_left", "lens_right", "eye_left", "eye_right", "optic_nerve_left", "optic_nerve_right"}
+                    # Органы, для которых нельзя применять remove_small_blobs:
+                    # 1) Очень мелкие структуры (линзы, нервы) — могут быть целиком удалены
+                    # 2) Парные структуры в одной маске (лёгкие, доли мозга) — 
+                    #    содержат 2+ отдельных 3D-компонента, remove_blobs удалит один из них
+                    SKIP_BLOB_REMOVAL = {
+                        "lens_left", "lens_right", "eye_left", "eye_right",
+                        "optic_nerve_left", "optic_nerve_right",
+                        "lungs",  # объединённый контур обоих лёгких
+                        "temporal_lobe", "frontal_lobe", "parietal_lobe",
+                        "occipital_lobe", "insular_cortex",  # доли мозга обоих полушарий
+                    }
                     
-                    if remove_blobs and organ_name not in TINY_ORGANS:
+                    if remove_blobs and organ_name not in SKIP_BLOB_REMOVAL:
                         before_pixels = np.sum(mask_data)
                         mask_data = self.remove_small_blobs(mask_data)
                         after_pixels = np.sum(mask_data)
@@ -1553,7 +1563,9 @@ class ContourEngine:
                         if removed_pixels > 0:
                             logger.info(f"[{organ_name}] Удалено мелких артефактов (blobs): {removed_pixels} пикселей")
 
-                    if smoothing_sigma > 0.0 and organ_name not in TINY_ORGANS:
+                    # Мелкие органы не сглаживаем — Гаусс может "размыть" их до пустоты
+                    SKIP_SMOOTHING = {"lens_left", "lens_right", "eye_left", "eye_right", "optic_nerve_left", "optic_nerve_right"}
+                    if smoothing_sigma > 0.0 and organ_name not in SKIP_SMOOTHING:
                         logger.info(f"[{organ_name}] Применение 3D-сглаживания Гаусса (sigma={smoothing_sigma})...")
                         mask_data = self.smooth_3d_mask(mask_data, smoothing_sigma)
 
