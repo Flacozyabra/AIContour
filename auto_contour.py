@@ -978,7 +978,9 @@ if PYQT_AVAILABLE:
     ]
 
     class DownloadWorker(QThread):
-        """Фоновый поток для неблокирующего скачивания весов модели ИИ."""
+        """Фоновый поток для неблокирующего скачивания весов модели ИИ с прогресс-баром."""
+        progress = pyqtSignal(int)
+        status_msg = pyqtSignal(str)
         finished = pyqtSignal(bool, str)
 
         def __init__(self, task_id):
@@ -987,11 +989,90 @@ if PYQT_AVAILABLE:
 
         def run(self):
             try:
-                from totalsegmentator.libs import download_pretrained_weights
-                # Вызываем оригинальную функцию скачивания
-                download_pretrained_weights(self.task_id)
+                import os
+                import zipfile
+                import requests
+                from totalsegmentator.config import get_weights_dir
+                from totalsegmentator.libs import get_version
+                
+                config_dir = get_weights_dir()
+                config_dir.mkdir(exist_ok=True, parents=True)
+                tempfile = config_dir / "tmp_download_file.zip"
+                
+                commercial_tasks = {
+                    409: "brain_structures",
+                    304: "appendicular_bones",
+                    301: "heartchambers_highres"
+                }
+                
+                public_urls = {
+                    291: "https://github.com/wasserth/TotalSegmentator/releases/download/v2.0.0-weights/Dataset291_TotalSegmentator_part1_organs_1559subj.zip",
+                    292: "https://github.com/wasserth/TotalSegmentator/releases/download/v2.0.0-weights/Dataset292_TotalSegmentator_part2_vertebrae_1532subj.zip",
+                    293: "https://github.com/wasserth/TotalSegmentator/releases/download/v2.0.0-weights/Dataset293_TotalSegmentator_part3_cardiac_1559subj.zip",
+                    294: "https://github.com/wasserth/TotalSegmentator/releases/download/v2.0.0-weights/Dataset294_TotalSegmentator_part4_muscles_1559subj.zip",
+                    295: "https://github.com/wasserth/TotalSegmentator/releases/download/v2.0.0-weights/Dataset295_TotalSegmentator_part5_ribs_1559subj.zip",
+                    775: "https://github.com/wasserth/TotalSegmentator/releases/download/v2.3.0-weights/Dataset775_head_glands_cavities_492subj.zip"
+                }
+                
+                if self.task_id in commercial_tasks:
+                    from totalsegmentator.libs import get_totalseg_dir
+                    import json
+                    totalseg_dir = get_totalseg_dir()
+                    totalseg_config_file = totalseg_dir / "config.json"
+                    
+                    if totalseg_config_file.exists():
+                        with open(totalseg_config_file) as f:
+                            cfg = json.load(f)
+                        license_number = cfg.get("license_number", "")
+                    else:
+                        raise ValueError(f"Не найден файл конфигурации лицензии: {totalseg_config_file}")
+                    
+                    if not license_number:
+                        raise ValueError("Отсутствует активный лицензионный ключ.")
+                    
+                    url = "https://backend.totalsegmentator.com:443/download_weights"
+                    payload = {
+                        "license_number": license_number,
+                        "task": commercial_tasks[self.task_id],
+                        "version": get_version()
+                    }
+                    
+                    r = requests.post(url, json=payload, timeout=300, stream=True)
+                else:
+                    if self.task_id not in public_urls:
+                        raise ValueError(f"Неизвестный ID задачи {self.task_id} для скачивания.")
+                    url = public_urls[self.task_id]
+                    r = requests.get(url, stream=True, timeout=300)
+                
+                r.raise_for_status()
+                
+                total_size = int(r.headers.get('content-length', 0))
+                downloaded = 0
+                
+                with open(tempfile, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192 * 16):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total_size > 0:
+                                percent = int((downloaded / total_size) * 100)
+                                self.progress.emit(percent)
+                
+                self.status_msg.emit("Загрузка завершена! Распаковка файлов модели...\nПожалуйста, подождите, это займет несколько секунд.")
+                
+                with zipfile.ZipFile(tempfile, 'r') as zip_f:
+                    zip_f.extractall(config_dir)
+                
+                if tempfile.exists():
+                    tempfile.unlink()
+                    
                 self.finished.emit(True, "")
             except Exception as e:
+                try:
+                    if 'tempfile' in locals() and tempfile.exists():
+                        tempfile.unlink()
+                except Exception:
+                    pass
                 self.finished.emit(False, str(e))
 
     class ModelsDialog(QDialog):
@@ -1199,7 +1280,7 @@ if PYQT_AVAILABLE:
             progress = QProgressDialog(
                 f"Идет скачивание весов модели \"{model['name']}\"...\n"
                 "Пожалуйста, подождите. Это может занять несколько минут в зависимости от скорости интернета.",
-                None, 0, 0, self
+                None, 0, 100, self
             )
             progress.setWindowTitle("📥 Загрузка весов модели ИИ")
             progress.setWindowModality(Qt.WindowModality.ApplicationModal)
@@ -1210,6 +1291,10 @@ if PYQT_AVAILABLE:
             
             # Запускаем поток
             self.dl_worker = DownloadWorker(model["id"])
+            
+            # Подключаем сигналы для обновления прогресса и статуса
+            self.dl_worker.progress.connect(progress.setValue)
+            self.dl_worker.status_msg.connect(progress.setLabelText)
             
             def on_finished(success, err_msg):
                 progress.close()
