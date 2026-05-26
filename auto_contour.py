@@ -1352,6 +1352,11 @@ if PYQT_AVAILABLE:
 
     class NonScrollComboBox(QComboBox):
         """Выпадающий список QComboBox, который игнорирует событие прокрутки колесика мыши во избежание случайных изменений."""
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            from PyQt6.QtWidgets import QListView
+            self.setView(QListView())
+
         def wheelEvent(self, event):
             event.ignore()
 
@@ -1433,7 +1438,7 @@ if PYQT_AVAILABLE:
             # Выбор пресета
             preset_label = QLabel("Выбор пресета органов (OAR):")
             preset_label.setStyleSheet("font-weight: bold; color: #ffffff;")
-            self.preset_combo = QComboBox()
+            self.preset_combo = NonScrollComboBox()
             # activated срабатывает при каждом выборе из списка, даже если значение не изменилось
             self.preset_combo.activated.connect(self.on_preset_changed)
             tab1_layout.addWidget(preset_label)
@@ -1944,7 +1949,7 @@ if PYQT_AVAILABLE:
             """)
             self.chk_show_structures.stateChanged.connect(self.on_show_structures_changed)
             
-            self.rtstruct_combo = QComboBox()
+            self.rtstruct_combo = NonScrollComboBox()
             self.rtstruct_combo.setEnabled(False)
             self.rtstruct_combo.currentIndexChanged.connect(self.on_viewer_rtstruct_changed)
             
@@ -2180,7 +2185,15 @@ if PYQT_AVAILABLE:
         def update_item_color_icon(self, item: QListWidgetItem, organ_name: str):
             """Генерирует и устанавливает цветную иконку для органа в списке."""
             pixmap = QPixmap(14, 14)
-            color_rgb = self.engine.colors.get(organ_name, [128, 128, 128])
+            if isinstance(organ_name, dict):
+                org_str = organ_name.get("name") or (list(organ_name.keys())[0] if organ_name else "")
+            else:
+                org_str = organ_name
+            
+            if not isinstance(org_str, str):
+                org_str = str(org_str) if org_str else ""
+                
+            color_rgb = self.engine.colors.get(org_str, [128, 128, 128])
             pixmap.fill(QColor(color_rgb[0], color_rgb[1], color_rgb[2]))
             item.setIcon(QIcon(pixmap))
 
@@ -3774,8 +3787,7 @@ if PYQT_AVAILABLE:
             palette = preset_palettes.get(text)
             if palette:
                 for organ, color in palette.items():
-                    if organ in self.engine.colors:
-                        self.engine.colors[organ] = color
+                    self.engine.colors[organ] = color
                 
                 # Сохраняем в конфигурационные файлы config/
                 self.engine.save_presets_config()
@@ -3786,8 +3798,13 @@ if PYQT_AVAILABLE:
                     for i in range(self.structures_list.count()):
                         itm = self.structures_list.item(i)
                         org = itm.data(Qt.ItemDataRole.UserRole)
-                        if org != "header":
-                            self.update_item_color_icon(itm, org)
+                        if org != "header" and org:
+                            # Безопасное получение названия органа
+                            if isinstance(org, dict):
+                                org_str = org.get("name") or (list(org.keys())[0] if org else "")
+                            else:
+                                org_str = org
+                            self.update_item_color_icon(itm, org_str)
                 finally:
                     self.structures_list.blockSignals(False)
                 
