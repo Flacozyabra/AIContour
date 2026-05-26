@@ -1081,7 +1081,8 @@ if PYQT_AVAILABLE:
             super().__init__(parent)
             self.engine = engine
             self.setWindowTitle("📦 Управление моделями ИИ TotalSegmentator")
-            self.setMinimumSize(700, 500)
+            self.setMinimumSize(720, 680)
+            self.resize(720, 680)
             self.init_ui()
 
         def init_ui(self):
