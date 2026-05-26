@@ -1947,7 +1947,7 @@ if PYQT_AVAILABLE:
                     image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik05IDE2LjJMNC44IDEybC0xLjQgMS40TDkgMTkgMjEgN2wtMS40LTEuNEw5IDE6LjJ6IiBmaWxsPSIjYWFhYWFhIi8+PC9zdmc+");
                 }
             """)
-            self.chk_show_structures.stateChanged.connect(self.on_show_structures_changed)
+            self.chk_show_structures.stateChanged.connect(self.on_show_structures_toggled)
             
             self.rtstruct_combo = NonScrollComboBox()
             self.rtstruct_combo.setEnabled(False)
@@ -2910,6 +2910,19 @@ if PYQT_AVAILABLE:
             if hasattr(self, 'roi_overlay_3d'):
                 del self.roi_overlay_3d
 
+        def on_show_structures_toggled(self, state: int):
+            if state == 2:  # Qt.CheckState.Checked
+                if hasattr(self, 'color_preset_combo') and self.color_preset_combo.currentText() != "Яркий неоновый":
+                    self.is_switching_color_preset = True
+                    try:
+                        self.color_preset_combo.blockSignals(True)
+                        self.color_preset_combo.setCurrentText("Яркий неоновый")
+                        self.color_preset_combo.blockSignals(False)
+                        self.on_color_preset_changed("Яркий неоновый")
+                    finally:
+                        self.is_switching_color_preset = False
+            self.on_show_structures_changed()
+
         def on_show_structures_changed(self):
             import pyqtgraph as pg
             import numpy as np
@@ -2976,16 +2989,7 @@ if PYQT_AVAILABLE:
                 self.update_run_button(bool(self.series_table.selectedItems()))
                 return
                 
-            # Переключаем цветовую гамму на неоновую для режима просмотра
-            if hasattr(self, 'color_preset_combo') and self.color_preset_combo.currentText() != "Яркий неоновый":
-                self.is_switching_color_preset = True
-                try:
-                    self.color_preset_combo.blockSignals(True)
-                    self.color_preset_combo.setCurrentText("Яркий неоновый")
-                    self.color_preset_combo.blockSignals(False)
-                    self.on_color_preset_changed("Яркий неоновый")
-                finally:
-                    self.is_switching_color_preset = False
+
 
             # Делаем недоступными выбор пресетов и кнопки "выбрать все"/"снять все"
             if hasattr(self, 'preset_combo'):
