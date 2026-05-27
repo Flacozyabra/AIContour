@@ -62,6 +62,7 @@ class QueueManager:
     """Класс для потокобезопасного управления очередью задач ИИ."""
     
     def __init__(self, jobs_root: str = "jobs"):
+        self.lock = threading.Lock()
         self.jobs_root = Path(jobs_root).resolve()
         self.jobs_root.mkdir(exist_ok=True)
         

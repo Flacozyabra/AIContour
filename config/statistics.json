@@ -1,0 +1,49 @@
+{
+  "total_runs": 3,
+  "successful_runs": 1,
+  "failed_runs": 2,
+  "cancelled_runs": 0,
+  "total_organs_contoured": 13,
+  "total_elapsed_time_seconds": 617.6600487232208,
+  "organ_stats": {
+    "body": 1,
+    "spinal_cord": 1,
+    "urinary_bladder": 1,
+    "prostate": 1,
+    "sacrum": 1,
+    "hip_left": 1,
+    "hip_right": 1,
+    "femur_left": 1,
+    "femur_right": 1,
+    "iliac_artery_left": 1,
+    "iliac_artery_right": 1,
+    "colon": 1,
+    "small_bowel": 1
+  },
+  "recent_runs": [
+    {
+      "timestamp": "2026-05-27 15:54:26",
+      "status": "failed",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
+    {
+      "timestamp": "2026-05-27 15:54:05",
+      "status": "failed",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
+    {
+      "timestamp": "2026-05-26 19:01:34",
+      "status": "success",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 617.7,
+      "organs_count": 13
+    }
+  ]
+}

@@ -1705,6 +1705,7 @@ if PYQT_AVAILABLE:
 
             # Инициализируем переменные состояния сервера
             self.server_is_paused = False
+            self.is_toggling_pause = False
             self.server_process = None
             self.start_server_process()
 
@@ -1727,6 +1728,24 @@ if PYQT_AVAILABLE:
         def start_server_process(self):
             import subprocess
             import sys
+            logging.info("Очистка порта 8000 от старых процессов...")
+            if os.name == 'nt':
+                try:
+                    netstat_out = subprocess.check_output("netstat -ano | findstr :8000", shell=True, text=True)
+                    pids_to_kill = set()
+                    current_pid = str(os.getpid())
+                    for line in netstat_out.strip().split("\n"):
+                        parts = [p.strip() for p in line.split(" ") if p.strip()]
+                        if len(parts) >= 5:
+                            pid = parts[-1]
+                            if pid.isdigit() and pid != current_pid:
+                                pids_to_kill.add(pid)
+                    for pid in pids_to_kill:
+                        logging.info(f"Жесткое завершение старого процесса бэкенда PID {pid}...")
+                        subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception as ex:
+                    logging.debug(f"Не удалось очистить порт 8000: {ex}")
+            
             logging.info("Запуск фонового процесса FastAPI бэкенда...")
             try:
                 creation_flags = 0
@@ -2346,9 +2365,37 @@ if PYQT_AVAILABLE:
             self.rtstruct_combo.setEnabled(False)
             self.rtstruct_combo.currentIndexChanged.connect(self.on_viewer_rtstruct_changed)
             
+            # Кнопки приближения и отдаления 🔍+ / 🔍-
+            self.btn_zoom_in = QPushButton("🔍+")
+            self.btn_zoom_in.setToolTip("Приблизить КТ-снимок (Zoom In)")
+            self.btn_zoom_in.setFixedWidth(40)
+            self.btn_zoom_in.setObjectName("btnBrowse")
+            
+            self.btn_zoom_out = QPushButton("🔍-")
+            self.btn_zoom_out.setToolTip("Отдалить КТ-снимок (Zoom Out)")
+            self.btn_zoom_out.setFixedWidth(40)
+            self.btn_zoom_out.setObjectName("btnBrowse")
+            
+            def zoom_in():
+                try:
+                    self.dicom_viewer.getView().scaleBy((0.85, 0.85))
+                except Exception:
+                    pass
+            
+            def zoom_out():
+                try:
+                    self.dicom_viewer.getView().scaleBy((1.18, 1.18))
+                except Exception:
+                    pass
+                    
+            self.btn_zoom_in.clicked.connect(zoom_in)
+            self.btn_zoom_out.clicked.connect(zoom_out)
+
             viewer_tools_layout.addWidget(self.chk_show_structures)
             viewer_tools_layout.addWidget(QLabel("Файл:"))
             viewer_tools_layout.addWidget(self.rtstruct_combo, 1)
+            viewer_tools_layout.addWidget(self.btn_zoom_in)
+            viewer_tools_layout.addWidget(self.btn_zoom_out)
             viewer_layout.addWidget(viewer_tools_panel)
             
             self.dicom_viewer = pg.ImageView()
@@ -2373,18 +2420,33 @@ if PYQT_AVAILABLE:
             
             top_layout.addWidget(self.main_splitter, 1)  # stretch=1: main_splitter занимает всё оставшееся пространство
             
-            # Нижняя панель (Логи + Прогресс)
+            # Нижняя панель (Логи + Прогресс + Очередь) с вертикальным сплиттером
             bottom_panel = QWidget()
             bottom_layout = QVBoxLayout(bottom_panel)
             bottom_layout.setContentsMargins(0, 0, 0, 0)
-            bottom_layout.setSpacing(6)
+            bottom_layout.setSpacing(0)
             
-            bottom_layout.addWidget(logs_header)
-            bottom_layout.addWidget(self.log_edit, 1)  # лог растягивается
-            bottom_layout.addWidget(progress_header)
-            bottom_layout.addWidget(self.status_step_label)
-            bottom_layout.addWidget(self.progress_bar)
-            bottom_layout.addWidget(self.eta_label)
+            bottom_splitter = QSplitter(Qt.Orientation.Vertical)
+            bottom_splitter.setObjectName("bottomSplitter")
+            bottom_splitter.setStyleSheet("QSplitter::handle { background-color: #34495e; height: 3px; }")
+            
+            # Зона логов
+            logs_widget = QWidget()
+            logs_layout = QVBoxLayout(logs_widget)
+            logs_layout.setContentsMargins(0, 0, 0, 6)
+            logs_layout.setSpacing(6)
+            logs_layout.addWidget(logs_header)
+            logs_layout.addWidget(self.log_edit, 1)
+            
+            # Зона очереди и прогресса
+            queue_widget = QWidget()
+            queue_layout = QVBoxLayout(queue_widget)
+            queue_layout.setContentsMargins(0, 6, 0, 0)
+            queue_layout.setSpacing(6)
+            queue_layout.addWidget(progress_header)
+            queue_layout.addWidget(self.status_step_label)
+            queue_layout.addWidget(self.progress_bar)
+            queue_layout.addWidget(self.eta_label)
 
             # Инициализация и добавление компактной таблицы очереди
             self.table_queue = QTableWidget()
@@ -2409,8 +2471,16 @@ if PYQT_AVAILABLE:
             self.table_queue.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             self.table_queue.customContextMenuRequested.connect(self.show_context_menu)
 
-            bottom_layout.addWidget(self.table_queue)
-            bottom_layout.addWidget(self.btn_run)
+            queue_layout.addWidget(self.table_queue, 1)
+            queue_layout.addWidget(self.btn_run)
+            
+            bottom_splitter.addWidget(logs_widget)
+            bottom_splitter.addWidget(queue_widget)
+            bottom_splitter.setStretchFactor(0, 1)
+            bottom_splitter.setStretchFactor(1, 1)
+            bottom_splitter.setSizes([200, 200])
+            
+            bottom_layout.addWidget(bottom_splitter)
             
             self.v_splitter.addWidget(top_panel)
             self.v_splitter.addWidget(bottom_panel)
@@ -5112,45 +5182,81 @@ if PYQT_AVAILABLE:
                 return "127.0.0.1"
 
         def toggle_pause(self):
-            """Переключает статус паузы очереди на сервере."""
-            import requests
-            try:
-                if self.server_is_paused:
-                    res = requests.post("http://127.0.0.1:8000/api/server/resume", timeout=3)
+            """Переключает статус паузы очереди на сервере в фоновом потоке."""
+            if getattr(self, "is_toggling_pause", False):
+                return
+                
+            self.is_toggling_pause = True
+            self.btn_pause_toggle.setEnabled(False)
+            
+            current_paused = self.server_is_paused
+            next_status = "Включение..." if current_paused else "Приостановка..."
+            self.btn_pause_toggle.setText(f"{next_status} 🔄")
+            self.btn_pause_toggle.setStyleSheet("""
+                QPushButton#btnPauseActive {
+                    background-color: #7f8c8d;
+                    border: 1px solid #95a5a6;
+                    color: #ffffff;
+                    padding: 8px 18px;
+                    font-size: 13px;
+                    font-weight: bold;
+                }
+            """)
+            
+            def worker():
+                import requests
+                url = "http://127.0.0.1:8000/api/server/resume" if current_paused else "http://127.0.0.1:8000/api/server/pause"
+                success = False
+                try:
+                    res = requests.post(url, timeout=0.8)
                     if res.status_code == 200:
-                        self.server_is_paused = False
-                        self.btn_pause_toggle.setText("СЕРВЕР АКТИВЕН 🟢")
-                        self.btn_pause_toggle.setStyleSheet("""
-                            QPushButton#btnPauseActive {
-                                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #27ae60, stop: 1 #1e8449);
-                                border: 1px solid #2ecc71;
-                                color: #ffffff;
-                                padding: 8px 18px;
-                                font-size: 13px;
-                                font-weight: bold;
-                            }
-                        """)
-                else:
-                    res = requests.post("http://127.0.0.1:8000/api/server/pause", timeout=3)
-                    if res.status_code == 200:
-                        self.server_is_paused = True
-                        self.btn_pause_toggle.setText("СЕРВЕР НА ПАУЗЕ ⏸️")
-                        self.btn_pause_toggle.setStyleSheet("""
-                            QPushButton#btnPauseActive {
-                                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #d35400, stop: 1 #a04000);
-                                border: 1px solid #e67e22;
-                                color: #ffffff;
-                                padding: 8px 18px;
-                                font-size: 13px;
-                                font-weight: bold;
-                            }
-                        """)
-            except Exception as e:
-                logger.error(f"Не удалось переключить паузу сервера: {e}")
-                QMessageBox.warning(self, "Ошибка связи", f"Не удалось переключить состояние паузы сервера: {e}")
+                        success = True
+                except Exception as e:
+                    logger.error(f"Не удалось отправить запрос смены паузы: {e}")
+                    
+                def update_gui():
+                    self.is_toggling_pause = False
+                    self.btn_pause_toggle.setEnabled(True)
+                    if success:
+                        self.server_is_paused = not current_paused
+                        if self.server_is_paused:
+                            self.btn_pause_toggle.setText("СЕРВЕР НА ПАУЗЕ ⏸️")
+                            self.btn_pause_toggle.setStyleSheet("""
+                                QPushButton#btnPauseActive {
+                                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #d35400, stop: 1 #a04000);
+                                    border: 1px solid #e67e22;
+                                    color: #ffffff;
+                                    padding: 8px 18px;
+                                    font-size: 13px;
+                                    font-weight: bold;
+                                }
+                            """)
+                        else:
+                            self.btn_pause_toggle.setText("СЕРВЕР АКТИВЕН 🟢")
+                            self.btn_pause_toggle.setStyleSheet("""
+                                QPushButton#btnPauseActive {
+                                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #27ae60, stop: 1 #1e8449);
+                                    border: 1px solid #2ecc71;
+                                    color: #ffffff;
+                                    padding: 8px 18px;
+                                    font-size: 13px;
+                                    font-weight: bold;
+                                }
+                            """)
+                    else:
+                        self.server_is_paused = current_paused
+                        QMessageBox.warning(self, "Ошибка связи", "Не удалось изменить состояние паузы сервера. Проверьте подключение бэкенда.")
+                        self.update_server_ui()
+                        
+                QTimer.singleShot(0, update_gui)
+                
+            import threading
+            threading.Thread(target=worker, daemon=True).start()
 
         def update_server_ui(self):
             """Вызывается по таймеру раз в секунду: запрашивает статус через REST API и обновляет интерфейс."""
+            if getattr(self, "is_toggling_pause", False):
+                return
             import requests
             try:
                 response = requests.get("http://127.0.0.1:8000/api/server/status", timeout=0.8)
