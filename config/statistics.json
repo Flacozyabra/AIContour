@@ -1,8 +1,8 @@
 {
-  "total_runs": 6,
+  "total_runs": 7,
   "successful_runs": 1,
   "failed_runs": 2,
-  "cancelled_runs": 3,
+  "cancelled_runs": 4,
   "total_organs_contoured": 13,
   "total_elapsed_time_seconds": 617.6600487232208,
   "organ_stats": {
@@ -21,6 +21,14 @@
     "small_bowel": 1
   },
   "recent_runs": [
+    {
+      "timestamp": "2026-05-27 16:48:25",
+      "status": "cancelled",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
     {
       "timestamp": "2026-05-27 16:42:27",
       "status": "cancelled",

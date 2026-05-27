@@ -2193,6 +2193,8 @@ if PYQT_AVAILABLE:
 
             progress_header = QLabel("Индикатор прогресса:")
             progress_header.setStyleSheet("font-weight: bold; color: #ffffff;")
+            queue_header = QLabel("Очередь автооконтурирования (на сервере):")
+            queue_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.status_step_label = QLabel("Текущий шаг: Ожидание запуска...")
             self.status_step_label.setStyleSheet("color: #007acc; font-weight: bold; font-style: italic;")
             self.progress_bar = QProgressBar()
@@ -2364,7 +2366,7 @@ if PYQT_AVAILABLE:
             queue_layout = QVBoxLayout(queue_widget)
             queue_layout.setContentsMargins(0, 0, 0, 0)
             queue_layout.setSpacing(4)
-            queue_layout.addWidget(progress_header)
+            queue_layout.addWidget(queue_header)
 
             # Инициализация и добавление компактной таблицы очереди (симметрично серверу)
             self.table_queue = QTableWidget()
@@ -2401,6 +2403,7 @@ if PYQT_AVAILABLE:
             bottom_layout.addWidget(bottom_splitter, 1)
             
             # 3. Элементы прогресса и кнопка запуска (идут под сплиттером, всегда на виду)
+            bottom_layout.addWidget(progress_header)
             bottom_layout.addWidget(self.status_step_label)
             bottom_layout.addWidget(self.progress_bar)
             bottom_layout.addWidget(self.eta_label)

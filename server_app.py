@@ -2285,6 +2285,8 @@ if PYQT_AVAILABLE:
 
             progress_header = QLabel("Индикатор прогресса:")
             progress_header.setStyleSheet("font-weight: bold; color: #ffffff;")
+            queue_header = QLabel("Очередь автооконтурирования (на сервере):")
+            queue_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.status_step_label = QLabel("Текущий шаг: Ожидание запуска...")
             self.status_step_label.setStyleSheet("color: #007acc; font-weight: bold; font-style: italic;")
             self.progress_bar = QProgressBar()
@@ -2456,7 +2458,7 @@ if PYQT_AVAILABLE:
             queue_layout = QVBoxLayout(queue_widget)
             queue_layout.setContentsMargins(0, 0, 0, 0)
             queue_layout.setSpacing(4)
-            queue_layout.addWidget(progress_header)
+            queue_layout.addWidget(queue_header)
 
             # Инициализация и добавление компактной таблицы очереди
             self.table_queue = QTableWidget()
@@ -2493,6 +2495,7 @@ if PYQT_AVAILABLE:
             bottom_layout.addWidget(bottom_splitter, 1)
             
             # 3. Элементы прогресса и кнопка запуска (идут под сплиттером, всегда на виду)
+            bottom_layout.addWidget(progress_header)
             bottom_layout.addWidget(self.status_step_label)
             bottom_layout.addWidget(self.progress_bar)
             bottom_layout.addWidget(self.eta_label)
@@ -5197,6 +5200,9 @@ if PYQT_AVAILABLE:
             except Exception:
                 return "127.0.0.1"
 
+        def get_server_url(self) -> str:
+            return self.server_url_edit.text().strip().rstrip('/')
+
         def toggle_pause(self):
             """Переключает статус паузы очереди на сервере в фоновом потоке."""
             if getattr(self, "is_toggling_pause", False):
@@ -5221,7 +5227,8 @@ if PYQT_AVAILABLE:
             
             def worker():
                 import requests
-                url = "http://127.0.0.1:8000/api/server/resume" if current_paused else "http://127.0.0.1:8000/api/server/pause"
+                server_url = self.get_server_url()
+                url = f"{server_url}/api/server/resume" if current_paused else f"{server_url}/api/server/pause"
                 success = False
                 try:
                     res = requests.post(url, timeout=2.5)
@@ -5310,7 +5317,8 @@ if PYQT_AVAILABLE:
                 data = {}
                 active_job_logs = []
                 try:
-                    response = requests.get("http://127.0.0.1:8000/api/server/status", timeout=1.5)
+                    server_url = self.get_server_url()
+                    response = requests.get(f"{server_url}/api/server/status", timeout=1.5)
                     if response.status_code == 200:
                         data = response.json()
                         success = True
@@ -5324,7 +5332,7 @@ if PYQT_AVAILABLE:
                         
                         if processing_job:
                             active_job_id = processing_job.get("job_id")
-                            job_status_res = requests.get(f"http://127.0.0.1:8000/api/jobs/{active_job_id}/status", timeout=1.0)
+                            job_status_res = requests.get(f"{server_url}/api/jobs/{active_job_id}/status", timeout=1.0)
                             if job_status_res.status_code == 200:
                                 active_job_logs = job_status_res.json().get("logs", [])
                 except Exception as e:
@@ -5510,7 +5518,8 @@ if PYQT_AVAILABLE:
             if reply == QMessageBox.StandardButton.Yes:
                 try:
                     import requests
-                    res = requests.delete(f"http://127.0.0.1:8000/api/jobs/{job_id}/cancel", timeout=3)
+                    server_url = self.get_server_url()
+                    res = requests.delete(f"{server_url}/api/jobs/{job_id}/cancel", timeout=3)
                     if res.status_code != 200:
                         raise RuntimeError(res.text)
                 except Exception as e:
@@ -5521,7 +5530,8 @@ if PYQT_AVAILABLE:
             """Поднимает задачу на самый верх очереди (показывает приоритет)."""
             try:
                 import requests
-                res = requests.post(f"http://127.0.0.1:8000/api/jobs/{job_id}/prioritize", timeout=3)
+                server_url = self.get_server_url()
+                res = requests.post(f"{server_url}/api/jobs/{job_id}/prioritize", timeout=3)
                 if res.status_code != 200:
                     raise RuntimeError(res.text)
                 logger.info(f"Задача {job_id} успешно приоритезирована.")
