@@ -1740,7 +1740,7 @@ if PYQT_AVAILABLE:
             # Индикатор состояния сервера в правом верхнем углу вкладок
             self.lbl_server_status_indicator = QLabel("Сервер: Недоступен 🔴")
             self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #ff6b6b; margin-right: 10px; font-size: 12px;")
-            self.tab_widget.setCornerWidget(self.lbl_server_status_indicator, Qt.Corner.TopRight)
+            self.tab_widget.setCornerWidget(self.lbl_server_status_indicator, Qt.Corner.TopRightCorner)
             
             left_layout.addWidget(self.tab_widget)
 

@@ -1681,7 +1681,6 @@ if PYQT_AVAILABLE:
             super().__init__(parent)
             self.setDragEnabled(True)
             self.setAcceptDrops(True)
-            self.setViewportAllowed(True)
             self.setDragDropOverwriteMode(False)
             self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
             self.setDefaultDropAction(Qt.DropAction.MoveAction)
