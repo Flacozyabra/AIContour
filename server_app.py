@@ -2430,17 +2430,25 @@ if PYQT_AVAILABLE:
             top_layout = QVBoxLayout(top_panel)
             top_layout.setContentsMargins(0, 0, 0, 0)
             
-            top_layout.addWidget(table_header)
+            # Горизонтальный ряд заголовков над сплиттером для экономии высоты
+            headers_widget = QWidget()
+            headers_layout = QHBoxLayout(headers_widget)
+            headers_layout.setContentsMargins(0, 0, 0, 0)
+            headers_layout.setSpacing(10)
+            
+            # Создаем и стилизуем заголовок вьюера
+            viewer_section_header = QLabel("Просмотр КТ-снимков")
+            viewer_section_header.setStyleSheet("font-weight: bold; color: #ffffff;")
+            
+            headers_layout.addWidget(table_header, 6)
+            headers_layout.addWidget(viewer_section_header, 4)
+            
+            top_layout.addWidget(headers_widget)
             
             # --- Вьюер DICOM (PyQtGraph) ---
             viewer_container = QWidget()
             viewer_layout = QVBoxLayout(viewer_container)
             viewer_layout.setContentsMargins(0, 0, 0, 0)
-            
-            # Заголовок секции просмотра
-            viewer_section_header = QLabel("Просмотр КТ-снимков")
-            viewer_section_header.setStyleSheet("font-weight: bold; color: #ffffff;")
-            viewer_layout.addWidget(viewer_section_header)
             
             viewer_tools_panel = QFrame()
             viewer_tools_panel.setObjectName("viewerToolsPanel")
