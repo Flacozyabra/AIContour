@@ -244,6 +244,10 @@ if PYQT_AVAILABLE:
         """Вспомогательный класс сигналов для потокобезопасного изменения паузы."""
         pause_signal = pyqtSignal(bool, bool)
 
+    class ServerStatusSignaler(QObject):
+        """Вспомогательный класс сигналов для потокобезопасного обновления UI сервера."""
+        status_signal = pyqtSignal(bool, dict, list)
+
     class StreamToSignaler:
         """Перенаправляет текстовые потоки в сигналы PyQt6."""
         def __init__(self, signaler: LogSignaler, level: str = "INFO"):
@@ -1695,6 +1699,9 @@ if PYQT_AVAILABLE:
 
             self.pause_signaler = PauseSignaler()
             self.pause_signaler.pause_signal.connect(self.update_gui_after_pause)
+
+            self.server_status_signaler = ServerStatusSignaler()
+            self.server_status_signaler.status_signal.connect(self.handle_server_status_update)
 
             # Таймер активности (спиннер + пульсация цвета)
             self.activity_timer = QTimer(self)
@@ -5342,143 +5349,144 @@ if PYQT_AVAILABLE:
                                 active_job_logs = job_status_res.json().get("logs", [])
                 except Exception as e:
                     logger.debug(f"Ошибка фонового обновления статуса сервера: {e}")
-                    
-                def update_gui():
-                    self.is_updating_server_ui = False
-                    if getattr(self, "is_toggling_pause", False):
-                        return
-                        
-                    if success:
-                        is_paused = data.get("is_paused", False)
-                        info_list = data.get("jobs", [])
-                        
-                        # Обновляем локальное состояние паузы
-                        self.server_is_paused = is_paused
-                        if is_paused:
-                            self.btn_pause_toggle.setText("СЕРВЕР НА ПАУЗЕ ⏸️")
-                            self.btn_pause_toggle.setStyleSheet("""
-                                QPushButton#btnPauseActive {
-                                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #d35400, stop: 1 #a04000);
-                                    border: 1px solid #e67e22;
-                                    color: #ffffff;
-                                    padding: 8px 18px;
-                                    font-size: 13px;
-                                    font-weight: bold;
-                                }
-                            """)
-                        else:
-                            self.btn_pause_toggle.setText("СЕРВЕР АКТИВЕН 🟢")
-                            self.btn_pause_toggle.setStyleSheet("""
-                                QPushButton#btnPauseActive {
-                                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #27ae60, stop: 1 #1e8449);
-                                    border: 1px solid #2ecc71;
-                                    color: #ffffff;
-                                    padding: 8px 18px;
-                                    font-size: 13px;
-                                    font-weight: bold;
-                                }
-                            """)
-                            
-                        self.lbl_server_address.setText(f"API запущен: http://{self.get_local_ip()}:8000")
-                        
-                        # Обновление таблицы очереди
-                        self.table_queue.setRowCount(len(info_list))
-                        from PyQt6.QtGui import QBrush, QColor, QFont
-                        for row, item in enumerate(info_list):
-                            self.table_queue.setItem(row, 0, self.create_table_item(item["client_name"]))
-                            self.table_queue.setItem(row, 1, self.create_table_item(item["patient_name"]))
-                            self.table_queue.setItem(row, 2, self.create_table_item(item["patient_id"]))
-                            self.table_queue.setItem(row, 3, self.create_table_item(item["preset"]))
-                            
-                            status_item = self.create_table_item(item["status"], centered=True)
-                            if item["status"] == "SUCCESS":
-                                status_item.setForeground(QBrush(QColor("#2ecc71")))
-                            elif item["status"] == "FAILED":
-                                status_item.setForeground(QBrush(QColor("#e74c3c")))
-                            elif item["status"] == "CANCELLED":
-                                status_item.setForeground(QBrush(QColor("#f39c12")))
-                            elif item["status"] == "PROCESSING":
-                                status_item.setForeground(QBrush(QColor("#3498db")))
-                                status_item.setFont(QFont("Segoe UI", weight=QFont.Weight.Bold))
-                            self.table_queue.setItem(row, 4, status_item)
-                            
-                            prog_text = f"{item['progress']}%" if item["status"] in ["PROCESSING", "SUCCESS"] else "-"
-                            self.table_queue.setItem(row, 5, self.create_table_item(prog_text, centered=True))
-                            
-                            self.table_queue.setItem(row, 6, self.create_table_item(item["created_at"], centered=True))
-                            self.table_queue.item(row, 0).setData(Qt.ItemDataRole.UserRole, item["job_id"])
-                            
-                        # Прогресс-бар и ETA
-                        local_running = hasattr(self, 'worker') and self.worker and self.worker.isRunning()
-                        if not local_running:
-                            processing_job = None
-                            for item in info_list:
-                                if item.get("status") == "PROCESSING":
-                                    processing_job = item
-                                    break
-                                    
-                            if processing_job:
-                                prog_val = int(processing_job.get("progress", 0))
-                                self.progress_bar.setValue(prog_val)
-                                self.progress_bar.setRange(0, 100)
-                                
-                                step_text = processing_job.get("current_step", "Выполнение...")
-                                self.status_step_label.setText(f"Текущий шаг (Сеть): {step_text}")
-                                self.status_step_label.setStyleSheet("color: #3498db; font-weight: bold; font-style: italic;")
-                                
-                                elapsed = processing_job.get("elapsed", 0.0)
-                                eta = processing_job.get("eta", 0.0)
-                                def fmt(s: float) -> str:
-                                    m = int(s // 60)
-                                    sec = int(s % 60)
-                                    return f"{m} мин {sec:02d} сек" if m > 0 else f"{sec} сек"
-                                txt = f"⏱ Прошло (Сеть): {fmt(elapsed)}"
-                                if eta > 0:
-                                    txt += f"  |  Ожидается ещё: ~{fmt(eta)}"
-                                self.eta_label.setText(txt)
-                                
-                                active_job_id = processing_job.get("job_id")
-                                if not hasattr(self, '_current_active_job_id') or self._current_active_job_id != active_job_id:
-                                    self._current_active_job_id = active_job_id
-                                    self.last_server_log_index = 0
-                                    patient_name = processing_job.get("patient_name", "Неизвестный")
-                                    self.append_log(f"<br><span style='background-color: #34495e; color: white; font-weight: bold; padding: 6px;'>=== Логи автооконтурирования: {patient_name} ===</span><br>", "#3498db")
-                                
-                                if len(active_job_logs) > self.last_server_log_index:
-                                    for new_line in active_job_logs[self.last_server_log_index:]:
-                                        color = "#a0a0a2"
-                                        if "ERROR" in new_line or "Exception" in new_line or "failed" in new_line.lower():
-                                            color = "#ff6b6b"
-                                        elif "WARNING" in new_line:
-                                            color = "#f1c40f"
-                                        elif "шаг" in new_line.lower() or "---" in new_line:
-                                            color = "#3498db"
-                                        elif "totalsegmentator" in new_line.lower():
-                                            color = "#2ecc71"
-                                        self.append_log(new_line, color)
-                                    self.last_server_log_index = len(active_job_logs)
-                            else:
-                                if "(Сеть)" in self.status_step_label.text():
-                                    self.progress_bar.setValue(0)
-                                    self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
-                                    self.status_step_label.setStyleSheet("color: #007acc; font-weight: bold; font-style: italic;")
-                                    self.eta_label.setText("")
-                                    
-                                    if hasattr(self, '_current_active_job_id') and self._current_active_job_id:
-                                        final_log = "[INFO]: Сетевой пайплайн успешно завершен!"
-                                        self.log_edit.append(f"<br><span style='background-color: #107c41; color: white; font-weight: bold; padding: 4px;'>{final_log}</span><br>")
-                                        self._current_active_job_id = None
-                                        self.last_server_log_index = 0
-                                    self.update_statistics_ui()
-                    else:
-                        self.lbl_server_address.setText("Подключение к API серверу... (Запуск/Оффлайн)")
-                        self.table_queue.setRowCount(0)
-                        
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(0, update_gui)
+                
+                # Безопасно передаем результаты в главный поток GUI через сигнал
+                self.server_status_signaler.status_signal.emit(success, data, active_job_logs)
                 
             import threading
             threading.Thread(target=worker, daemon=True).start()
+
+        def handle_server_status_update(self, success: bool, data: dict, active_job_logs: list):
+            """Вызывается строго в главном потоке GUI для безопасного обновления UI."""
+            self.is_updating_server_ui = False
+            if getattr(self, "is_toggling_pause", False):
+                return
+                
+            if success:
+                is_paused = data.get("is_paused", False)
+                info_list = data.get("jobs", [])
+                
+                # Обновляем локальное состояние паузы
+                self.server_is_paused = is_paused
+                if is_paused:
+                    self.btn_pause_toggle.setText("СЕРВЕР НА ПАУЗЕ ⏸️")
+                    self.btn_pause_toggle.setStyleSheet("""
+                        QPushButton#btnPauseActive {
+                            background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #d35400, stop: 1 #a04000);
+                            border: 1px solid #e67e22;
+                            color: #ffffff;
+                            padding: 8px 18px;
+                            font-size: 13px;
+                            font-weight: bold;
+                        }
+                    """)
+                else:
+                    self.btn_pause_toggle.setText("СЕРВЕР АКТИВЕН 🟢")
+                    self.btn_pause_toggle.setStyleSheet("""
+                        QPushButton#btnPauseActive {
+                            background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #27ae60, stop: 1 #1e8449);
+                            border: 1px solid #2ecc71;
+                            color: #ffffff;
+                            padding: 8px 18px;
+                            font-size: 13px;
+                            font-weight: bold;
+                        }
+                    """)
+                    
+                self.lbl_server_address.setText(f"API запущен: http://{self.get_local_ip()}:8000")
+                
+                # Обновление таблицы очереди
+                self.table_queue.setRowCount(len(info_list))
+                from PyQt6.QtGui import QBrush, QColor, QFont
+                for row, item in enumerate(info_list):
+                    self.table_queue.setItem(row, 0, self.create_table_item(item["client_name"]))
+                    self.table_queue.setItem(row, 1, self.create_table_item(item["patient_name"]))
+                    self.table_queue.setItem(row, 2, self.create_table_item(item["patient_id"]))
+                    self.table_queue.setItem(row, 3, self.create_table_item(item["preset"]))
+                    
+                    status_item = self.create_table_item(item["status"], centered=True)
+                    if item["status"] == "SUCCESS":
+                        status_item.setForeground(QBrush(QColor("#2ecc71")))
+                    elif item["status"] == "FAILED":
+                        status_item.setForeground(QBrush(QColor("#e74c3c")))
+                    elif item["status"] == "CANCELLED":
+                        status_item.setForeground(QBrush(QColor("#f39c12")))
+                    elif item["status"] == "PROCESSING":
+                        status_item.setForeground(QBrush(QColor("#3498db")))
+                        status_item.setFont(QFont("Segoe UI", weight=QFont.Weight.Bold))
+                    self.table_queue.setItem(row, 4, status_item)
+                    
+                    prog_text = f"{item['progress']}%" if item["status"] in ["PROCESSING", "SUCCESS"] else "-"
+                    self.table_queue.setItem(row, 5, self.create_table_item(prog_text, centered=True))
+                    
+                    self.table_queue.setItem(row, 6, self.create_table_item(item["created_at"], centered=True))
+                    self.table_queue.item(row, 0).setData(Qt.ItemDataRole.UserRole, item["job_id"])
+                    
+                # Прогресс-бар и ETA
+                local_running = hasattr(self, 'worker') and self.worker and self.worker.isRunning()
+                if not local_running:
+                    processing_job = None
+                    for item in info_list:
+                        if item.get("status") == "PROCESSING":
+                            processing_job = item
+                            break
+                            
+                    if processing_job:
+                        prog_val = int(processing_job.get("progress", 0))
+                        self.progress_bar.setValue(prog_val)
+                        self.progress_bar.setRange(0, 100)
+                        
+                        step_text = processing_job.get("current_step", "Выполнение...")
+                        self.status_step_label.setText(f"Текущий шаг (Сеть): {step_text}")
+                        self.status_step_label.setStyleSheet("color: #3498db; font-weight: bold; font-style: italic;")
+                        
+                        elapsed = processing_job.get("elapsed", 0.0)
+                        eta = processing_job.get("eta", 0.0)
+                        def fmt(s: float) -> str:
+                            m = int(s // 60)
+                            sec = int(s % 60)
+                            return f"{m} мин {sec:02d} сек" if m > 0 else f"{sec} сек"
+                        txt = f"⏱ Прошло (Сеть): {fmt(elapsed)}"
+                        if eta > 0:
+                            txt += f"  |  Ожидается ещё: ~{fmt(eta)}"
+                        self.eta_label.setText(txt)
+                        
+                        active_job_id = processing_job.get("job_id")
+                        if not hasattr(self, '_current_active_job_id') or self._current_active_job_id != active_job_id:
+                            self._current_active_job_id = active_job_id
+                            self.last_server_log_index = 0
+                            patient_name = processing_job.get("patient_name", "Неизвестный")
+                            self.append_log(f"<br><span style='background-color: #34495e; color: white; font-weight: bold; padding: 6px;'>=== Логи автооконтурирования: {patient_name} ===</span><br>", "#3498db")
+                        
+                        if len(active_job_logs) > self.last_server_log_index:
+                            for new_line in active_job_logs[self.last_server_log_index:]:
+                                color = "#a0a0a2"
+                                if "ERROR" in new_line or "Exception" in new_line or "failed" in new_line.lower():
+                                    color = "#ff6b6b"
+                                elif "WARNING" in new_line:
+                                    color = "#f1c40f"
+                                elif "шаг" in new_line.lower() or "---" in new_line:
+                                    color = "#3498db"
+                                elif "totalsegmentator" in new_line.lower():
+                                    color = "#2ecc71"
+                                self.append_log(new_line, color)
+                            self.last_server_log_index = len(active_job_logs)
+                    else:
+                        if "(Сеть)" in self.status_step_label.text():
+                            self.progress_bar.setValue(0)
+                            self.status_step_label.setText("Текущий шаг: Ожидание запуска...")
+                            self.status_step_label.setStyleSheet("color: #007acc; font-weight: bold; font-style: italic;")
+                            self.eta_label.setText("")
+                            
+                            if hasattr(self, '_current_active_job_id') and self._current_active_job_id:
+                                final_log = "[INFO]: Сетевой пайплайн успешно завершен!"
+                                self.log_edit.append(f"<br><span style='background-color: #107c41; color: white; font-weight: bold; padding: 4px;'>{final_log}</span><br>")
+                                self._current_active_job_id = None
+                                self.last_server_log_index = 0
+                            self.update_statistics_ui()
+            else:
+                self.lbl_server_address.setText("Подключение к API серверу... (Запуск/Оффлайн)")
+                self.table_queue.setRowCount(0)
 
         def create_table_item(self, text: str, centered: bool = False) -> QTableWidgetItem:
             item = QTableWidgetItem(text)
