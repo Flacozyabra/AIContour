@@ -81,6 +81,7 @@ if ContourEngine is None:
             colors_path = config_dir / "colors.json"
             translations_path = config_dir / "translations.json"
             presets_dir = config_dir / "presets"
+            licenses_path = config_dir / "licenses.json"
             
             try:
                 if colors_path.exists():
@@ -97,8 +98,39 @@ if ContourEngine is None:
                             organs = data.get("organs", [])
                             if name:
                                 self.presets[name] = organs
+                if licenses_path.exists():
+                    with open(licenses_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        self.licenses = data.get("license_key", "").strip()
+                else:
+                    self.licenses = ""
             except Exception as e:
                 print(f"Ошибка загрузки локальных конфигураций на клиенте: {e}")
+                
+        def save_presets_config(self):
+            import json
+            import sys
+            from pathlib import Path
+            if getattr(sys, 'frozen', False):
+                base_dir = Path(sys.executable).parent
+            else:
+                base_dir = Path(__file__).parent.resolve()
+            config_dir = (base_dir / "config").resolve()
+            config_dir.mkdir(parents=True, exist_ok=True)
+            
+            colors_path = config_dir / "colors.json"
+            translations_path = config_dir / "translations.json"
+            licenses_path = config_dir / "licenses.json"
+            
+            try:
+                with open(colors_path, "w", encoding="utf-8") as f:
+                    json.dump(self.colors, f, ensure_ascii=False, indent=2)
+                with open(translations_path, "w", encoding="utf-8") as f:
+                    json.dump(self.ru_names, f, ensure_ascii=False, indent=2)
+                with open(licenses_path, "w", encoding="utf-8") as f:
+                    json.dump({"license_key": getattr(self, "licenses", "")}, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"Ошибка сохранения локальных конфигураций на клиенте: {e}")
                 
         def get_all_supported_organs(self):
             """Возвращает список всех поддерживаемых органов из загруженных переводов."""
@@ -118,6 +150,11 @@ if ContourEngine is None:
                 
             pretty = pretty.replace("_", " ").title()
             return pretty
+            
+        def _get_default_color(self, organ_name: str):
+            import hashlib
+            h = hashlib.md5(organ_name.encode('utf-8')).digest()
+            return [max(50, int(h[0])), max(50, int(h[1])), max(50, int(h[2]))]
             
     ContourEngine = MockContourEngine
 
