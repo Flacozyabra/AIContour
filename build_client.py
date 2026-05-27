@@ -104,7 +104,7 @@ def build_executable(has_icon):
     heavy_excludes = [
         "torch", "torchvision", "torchaudio", 
         "totalsegmentator", "SimpleITK", "nibabel", 
-        "scipy", "matplotlib", "pandas", "h5py",
+        "matplotlib", "pandas", "h5py",
         "contour_engine" # движок тоже исключаем, клиент работает только по сети через API
     ]
     for m in heavy_excludes:
