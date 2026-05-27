@@ -103,6 +103,21 @@ if ContourEngine is None:
         def get_all_supported_organs(self):
             """Возвращает список всех поддерживаемых органов из загруженных переводов."""
             return sorted(list(self.ru_names.keys()))
+
+        def get_monaco_pretty_name(self, organ_name: str) -> str:
+            """Возвращает красивое имя OAR, совместимое с Elekta Monaco 5.51 и интерфейсом."""
+            from config import MONACO_NAMES_MAP
+            if organ_name in MONACO_NAMES_MAP:
+                return MONACO_NAMES_MAP[organ_name]
+                
+            pretty = organ_name
+            if pretty.endswith("_left"):
+                pretty = pretty[:-5] + "_l"
+            elif pretty.endswith("_right"):
+                pretty = pretty[:-6] + "_r"
+                
+            pretty = pretty.replace("_", " ").title()
+            return pretty
             
     ContourEngine = MockContourEngine
 
