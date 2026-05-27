@@ -145,6 +145,9 @@ class QueueManager:
         dicom_zip = job_dir / "dicom_input.zip"
         shutil.move(str(temp_zip_path), str(dicom_zip))
         
+        # Мгновенно считываем ФИО и ID пациента прямо из ZIP
+        self._read_patient_metadata_from_zip(dicom_zip, job)
+        
         with self.lock:
             self.jobs[job_id] = job
             self.pending_queue.append(job_id)
@@ -487,6 +490,41 @@ class QueueManager:
             
             # Полная очистка при сбое (результата нет, но сохраняем входной архив для возможности возобновления)
             self._cleanup_job_dir(job.job_id, keep_result=False, keep_input=True)
+
+    def _read_patient_metadata_from_zip(self, zip_path: Path, job: ServerJob):
+        """Быстро считывает метаданные пациента напрямую из ZIP-архива в памяти."""
+        import zipfile
+        import io
+        import pydicom
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                # Ищем файлы, похожие на DICOM
+                dcm_names = [name for name in zf.namelist() if not name.startswith('__MACOSX/') and not name.split('/')[-1].startswith('.')]
+                
+                # Отсортируем, чтобы файлы с расширением .dcm были первыми
+                dcm_names.sort(key=lambda x: 0 if x.lower().endswith('.dcm') else 1)
+                
+                for name in dcm_names:
+                    try:
+                        # Читаем только первые 256 КБ файла, так как теги метаданных лежат в самом начале
+                        with zf.open(name) as f:
+                            file_bytes = f.read(256 * 1024)
+                            
+                        bio = io.BytesIO(file_bytes)
+                        ds = pydicom.dcmread(bio, stop_before_pixels=True)
+                        
+                        if hasattr(ds, "PatientName") or hasattr(ds, "PatientID"):
+                            raw_name = getattr(ds, "PatientName", "Неизвестно")
+                            with self.lock:
+                                job.patient_name = str(raw_name).replace("^", " ").strip() if raw_name else "Неизвестно"
+                                job.patient_id = getattr(ds, "PatientID", "Без ID")
+                                job.study_date = getattr(ds, "StudyDate", "")
+                            logger.info(f"Метаданные пациента успешно считаны из ZIP для задачи {job.job_id}: {job.patient_name} ({job.patient_id})")
+                            return
+                    except Exception:
+                        continue
+        except Exception as e:
+            logger.debug(f"Не удалось быстро считать метаданные из ZIP: {e}")
 
     def _update_job_patient_metadata(self, job: ServerJob, dicom_dir: Path):
         """Считывает имя и ID пациента для красивого отображения в очереди."""
