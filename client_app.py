@@ -4664,7 +4664,7 @@ if PYQT_AVAILABLE:
                     if selected:
                         row = selected[0].row()
                         path_item = self.series_table.item(row, 6)
-                        if path_item and path_item.text() == dicom_dir:
+                        if path_item and Path(path_item.text()).resolve() == Path(dicom_dir).resolve():
                             # Сканируем RTSTRUCT
                             self.check_for_rtstruct(dicom_dir)
                             
