@@ -41,7 +41,7 @@ try:
         QMessageBox, QFrame, QSplitter, QCheckBox, QDialog, QTextBrowser,
         QTabWidget, QColorDialog, QGroupBox,
         QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMenu,
-        QProgressDialog, QScrollArea
+        QProgressDialog, QScrollArea, QGridLayout
     )
     from PyQt6.QtCore import QThread, pyqtSignal, Qt, QObject, QSettings, QTimer
     from PyQt6.QtGui import QTextCursor, QBrush, QColor, QFont, QIcon, QPixmap
@@ -2449,8 +2449,9 @@ if PYQT_AVAILABLE:
         def resizeEvent(self, event):
             """Динамическое ограничение максимальной ширины левой панели до 50% ширины окна."""
             super().resizeEvent(event)
-            max_w = max(400, int(self.width() * 0.5))
-            self.left_card.setMaximumWidth(max_w)
+            if hasattr(self, 'left_card'):
+                max_w = max(400, int(self.width() * 0.5))
+                self.left_card.setMaximumWidth(max_w)
 
         def update_license_status_label(self):
             """Обновляет статус лицензии (заглушка на клиенте)."""
