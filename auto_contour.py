@@ -3433,8 +3433,14 @@ if PYQT_AVAILABLE:
                             if "body_boundary" in self._loaded_roi_masks:
                                 boundary = self._loaded_roi_masks["body_boundary"]
                             else:
-                                import scipy.ndimage
-                                boundary = mask_3d ^ scipy.ndimage.binary_erosion(mask_3d, structure=np.ones((1, 5, 5)))
+                                import cv2
+                                kernel = np.ones((5, 5), dtype=np.uint8)
+                                eroded_slices = []
+                                for z in range(mask_3d.shape[0]):
+                                    slice_2d = mask_3d[z].astype(np.uint8)
+                                    eroded_slice = cv2.erode(slice_2d, kernel, iterations=1)
+                                    eroded_slices.append(eroded_slice.astype(bool))
+                                boundary = mask_3d ^ np.stack(eroded_slices)
                                 self._loaded_roi_masks["body_boundary"] = boundary
                                 
                             color = self.engine.colors.get(orig_organ, [0, 255, 0])
