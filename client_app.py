@@ -1731,7 +1731,6 @@ if PYQT_AVAILABLE:
             self.left_card = QFrame()
             self.left_card.setObjectName("card")
             self.left_card.setMinimumWidth(400)
-            self.left_card.setMaximumWidth(480)
             left_layout = QVBoxLayout(self.left_card)
             left_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -2356,7 +2355,7 @@ if PYQT_AVAILABLE:
             self.table_queue.setHorizontalHeaderLabels([
                 "Клиент", "Пациент", "ID Пациента", "Пресет", "Статус", "Прогресс", "Получено"
             ])
-            self.table_queue.setFixedHeight(95)  # Идеальный компактный размер для шапки + 2 строк!
+            self.table_queue.setMinimumHeight(95)  # Идеальный минимальный компактный размер для шапки + 2 строк!
             
             header = self.table_queue.horizontalHeader()
             header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
@@ -2409,6 +2408,13 @@ if PYQT_AVAILABLE:
             self.color_preset_combo.currentIndexChanged.connect(self.save_settings)
             
             self.splitter.setSizes([430, 490])
+
+        def resizeEvent(self, event):
+            """Динамическое ограничение максимальной ширины левой панели до 50% ширины окна."""
+            super().resizeEvent(event)
+            if hasattr(self, 'left_card'):
+                max_w = max(400, int(self.width() * 0.5))
+                self.left_card.setMaximumWidth(max_w)
 
         def update_license_status_label(self):
             """Обновляет статус лицензии (заглушка на клиенте)."""
