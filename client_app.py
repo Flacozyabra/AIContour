@@ -634,7 +634,7 @@ if PYQT_AVAILABLE:
                     try:
                         logger.info(f"Отправка запроса на отмену задачи {job_id} на сервер...")
                         cancel_url = f"{self.server_url.rstrip('/')}/api/jobs/{job_id}/cancel"
-                        requests.delete(cancel_url, timeout=5)
+                        requests.delete(cancel_url, params={"client_name": self.client_name}, timeout=5)
                     except Exception as ce:
                         logger.error(f"Не удалось отменить задачу на сервере: {ce}")
                 
@@ -1655,7 +1655,7 @@ if PYQT_AVAILABLE:
         """Главное окно графического интерфейса приложения."""
         def __init__(self):
             super().__init__()
-            self.setWindowTitle("AI Contour - Автооконтурирование КТ органов риска")
+            self.setWindowTitle("AI Contour — Автооконтурирование органов риска (клиент)")
             self.setMinimumSize(960, 760)
             self.showMaximized()
             self.existing_rtstruct_path = None
@@ -1730,12 +1730,18 @@ if PYQT_AVAILABLE:
             # --- ЛЕВАЯ КОЛОНКА (Вкладки настроек) ---
             self.left_card = QFrame()
             self.left_card.setObjectName("card")
-            self.left_card.setMinimumWidth(400)
+            self.left_card.setMinimumWidth(420)
             left_layout = QVBoxLayout(self.left_card)
             left_layout.setContentsMargins(5, 5, 5, 5)
 
             self.tab_widget = QTabWidget()
             self.tab_widget.currentChanged.connect(self.on_tab_changed)
+            
+            # Индикатор состояния сервера в правом верхнем углу вкладок
+            self.lbl_server_status_indicator = QLabel("Сервер: Недоступен 🔴")
+            self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #ff6b6b; margin-right: 10px; font-size: 12px;")
+            self.tab_widget.setCornerWidget(self.lbl_server_status_indicator, Qt.Corner.TopRight)
+            
             left_layout.addWidget(self.tab_widget)
 
             # ------------------------------------------------------------------
@@ -2227,7 +2233,7 @@ if PYQT_AVAILABLE:
             viewer_layout.setContentsMargins(0, 0, 0, 0)
             
             # Заголовок секции просмотра
-            viewer_section_header = QLabel("Просмотр")
+            viewer_section_header = QLabel("Просмотр КТ-снимков")
             viewer_section_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             viewer_layout.addWidget(viewer_section_header)
             
@@ -2448,16 +2454,14 @@ if PYQT_AVAILABLE:
             
             self.splitter.setSizes([430, 490])
 
-            # Инициализация постоянного индикатора состояния сервера в статус-баре
-            self.lbl_server_status_indicator = QLabel("Сервер: Недоступен 🔴")
-            self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #ff6b6b; margin-right: 15px; font-size: 12px;")
-            self.statusBar().addPermanentWidget(self.lbl_server_status_indicator)
+            # Скрываем статус-бар, так как индикатор перенесен во вкладки
+            self.statusBar().setVisible(False)
 
         def resizeEvent(self, event):
             """Динамическое ограничение максимальной ширины левой панели до 50% ширины окна."""
             super().resizeEvent(event)
             if hasattr(self, 'left_card'):
-                max_w = max(400, int(self.width() * 0.5))
+                max_w = max(420, int(self.width() * 0.5))
                 self.left_card.setMaximumWidth(max_w)
 
         def update_license_status_label(self):
@@ -4589,17 +4593,17 @@ if PYQT_AVAILABLE:
                 
                 # Обновление постоянного индикатора состояния сервера
                 if is_paused:
-                    self.lbl_server_status_indicator.setText("Сервер: На паузе ⏸️")
-                    self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #f39c12; margin-right: 15px; font-size: 12px;")
+                    self.lbl_server_status_indicator.setText("Сервер: ⏸️")
+                    self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #f39c12; margin-right: 10px; font-size: 12px;")
                 else:
-                    self.lbl_server_status_indicator.setText("Сервер: Активен 🟢")
-                    self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #2ecc71; margin-right: 15px; font-size: 12px;")
+                    self.lbl_server_status_indicator.setText("Сервер: ✅")
+                    self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #2ecc71; margin-right: 10px; font-size: 12px;")
                 
             except Exception as e:
                 self.table_queue.setRowCount(0)
                 # Обновление индикатора в случае недоступности сервера
-                self.lbl_server_status_indicator.setText("Сервер: Недоступен 🔴")
-                self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #ff6b6b; margin-right: 15px; font-size: 12px;")
+                self.lbl_server_status_indicator.setText("Сервер: ❌")
+                self.lbl_server_status_indicator.setStyleSheet("font-weight: bold; color: #ff6b6b; margin-right: 10px; font-size: 12px;")
                 return
 
             # Обновление таблицы очереди (только задачи данного клиента)
@@ -4749,9 +4753,18 @@ if PYQT_AVAILABLE:
                 try:
                     import requests
                     server_url = self.get_server_url()
-                    res = requests.delete(f"{server_url}/api/jobs/{job_id}/cancel", timeout=3)
+                    client_name = self.client_name_edit.text().strip()
+                    res = requests.delete(
+                        f"{server_url}/api/jobs/{job_id}/cancel", 
+                        params={"client_name": client_name}, 
+                        timeout=3
+                    )
                     if res.status_code != 200:
-                        raise RuntimeError(res.text)
+                        try:
+                            detail = res.json().get("detail", res.text)
+                        except Exception:
+                            detail = res.text
+                        raise RuntimeError(detail)
                 except Exception as e:
                     logger.error(f"Не удалось отменить задачу {job_id}: {e}")
                     QMessageBox.warning(self, "Ошибка отмены", f"Не удалось отменить выбранную задачу: {e}")

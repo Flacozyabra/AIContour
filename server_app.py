@@ -1675,11 +1675,82 @@ if PYQT_AVAILABLE:
         def wheelEvent(self, event):
             event.ignore()
 
+    class QueueTableWidget(QTableWidget):
+        """Таблица с поддержкой Drag & Drop для управления очередью задач."""
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.setDragEnabled(True)
+            self.setAcceptDrops(True)
+            self.setViewportAllowed(True)
+            self.setDragDropOverwriteMode(False)
+            self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+            self.setDefaultDropAction(Qt.DropAction.MoveAction)
+            self.parent_app = None
+
+        def dragEnterEvent(self, event):
+            row = self.currentRow()
+            if row < 0:
+                event.ignore()
+                return
+            status_item = self.item(row, 4)
+            if status_item and status_item.text() == "PROCESSING":
+                event.ignore()
+                return
+            event.acceptProposedAction()
+
+        def dragMoveEvent(self, event):
+            event.acceptProposedAction()
+
+        def dropEvent(self, event):
+            source_row = self.currentRow()
+            if source_row < 0:
+                event.ignore()
+                return
+
+            target_index = self.indexAt(event.position().toPoint())
+            target_row = target_index.row()
+            if target_row < 0:
+                target_row = self.rowCount() - 1
+
+            has_processing = False
+            first_row_status = self.item(0, 4)
+            if first_row_status and first_row_status.text() == "PROCESSING":
+                has_processing = True
+
+            if has_processing:
+                if target_row == 0:
+                    target_row = 1
+                if source_row == 0:
+                    event.ignore()
+                    return
+
+            if source_row == target_row:
+                event.ignore()
+                return
+
+            event.accept()
+            
+            # Собираем ID задач в новом порядке
+            new_job_ids = []
+            for r in range(self.rowCount()):
+                if r == source_row:
+                    continue
+                job_id = self.item(r, 0).data(Qt.ItemDataRole.UserRole)
+                if job_id:
+                    new_job_ids.append(job_id)
+            
+            moved_job_id = self.item(source_row, 0).data(Qt.ItemDataRole.UserRole)
+            if moved_job_id:
+                new_job_ids.insert(target_row, moved_job_id)
+                
+            if self.parent_app:
+                self.parent_app.send_new_queue_order(new_job_ids)
+
     class MainWindow(QMainWindow):
         """Главное окно графического интерфейса приложения."""
         def __init__(self):
             super().__init__()
-            self.setWindowTitle("AI Contour — Сервер + Локальный клиент 🖥️🧠")
+            self.setWindowTitle("AI Contour — Автооконтурирование органов риска (сервер + лок. клиент")
             self.setMinimumSize(960, 760)
             self.showMaximized()
             self.existing_rtstruct_path = None
@@ -1772,6 +1843,18 @@ if PYQT_AVAILABLE:
                 os.makedirs(logs_dir, exist_ok=True)
                 stdout_log_path = os.path.join(logs_dir, "server_stdout.log")
                 
+                # Ротация файла server_stdout.log перед запуском (до 2 файлов по 5 МБ)
+                try:
+                    if os.path.exists(stdout_log_path):
+                        if os.path.getsize(stdout_log_path) > 5 * 1024 * 1024:
+                            backup_log_path = stdout_log_path + ".1"
+                            if os.path.exists(backup_log_path):
+                                os.remove(backup_log_path)
+                            os.rename(stdout_log_path, backup_log_path)
+                            logging.info("Выполнена ротация файла server_stdout.log")
+                except Exception as re:
+                    logging.debug(f"Не удалось выполнить ротацию server_stdout.log: {re}")
+                
                 # Открываем файл логов в режиме перезаписи/дозаписи
                 self.server_stdout_file = open(stdout_log_path, "a", encoding="utf-8")
                 self.server_stdout_file.write(f"\n--- ЗАПУСК СЕРВЕРА: {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
@@ -1811,7 +1894,7 @@ if PYQT_AVAILABLE:
             # --- ЛЕВАЯ КОЛОНКА (Вкладки настроек) ---
             self.left_card = QFrame()
             self.left_card.setObjectName("card")
-            self.left_card.setMinimumWidth(400)
+            self.left_card.setMinimumWidth(430)
             left_layout = QVBoxLayout(self.left_card)
             left_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -2250,7 +2333,8 @@ if PYQT_AVAILABLE:
             right_card = QFrame()
             right_card.setObjectName("card")
             right_layout = QVBoxLayout(right_card)
-            right_layout.setSpacing(12)
+            right_layout.setContentsMargins(6, 6, 6, 6)
+            right_layout.setSpacing(6)
 
             logs_header = QLabel("Лог выполнения работы:")
             logs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
@@ -2337,7 +2421,7 @@ if PYQT_AVAILABLE:
             viewer_layout.setContentsMargins(0, 0, 0, 0)
             
             # Заголовок секции просмотра
-            viewer_section_header = QLabel("Просмотр")
+            viewer_section_header = QLabel("Просмотр КТ-снимков")
             viewer_section_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             viewer_layout.addWidget(viewer_section_header)
             
@@ -2484,7 +2568,8 @@ if PYQT_AVAILABLE:
             queue_layout.addWidget(queue_header)
 
             # Инициализация и добавление компактной таблицы очереди
-            self.table_queue = QTableWidget()
+            self.table_queue = QueueTableWidget(self)
+            self.table_queue.parent_app = self
             self.table_queue.setColumnCount(7)
             self.table_queue.setHorizontalHeaderLabels([
                 "Клиент", "Пациент", "ID Пациента", "Пресет", "Статус", "Прогресс", "Получено"
@@ -2562,7 +2647,7 @@ if PYQT_AVAILABLE:
             """Динамическое ограничение максимальной ширины левой панели до 50% ширины окна."""
             super().resizeEvent(event)
             if hasattr(self, 'left_card'):
-                max_w = max(400, int(self.width() * 0.5))
+                max_w = max(430, int(self.width() * 0.5))
                 self.left_card.setMaximumWidth(max_w)
 
         def update_license_status_label(self):
@@ -3365,8 +3450,8 @@ if PYQT_AVAILABLE:
                 
                 # Возвращаем левую панель и сплиттеры к стандартным размерам
                 if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                    self.left_card.setMinimumWidth(400)
-                    self.left_card.setMaximumWidth(480)
+                    self.left_card.setMinimumWidth(430)
+                    self.left_card.setMaximumWidth(max(430, int(self.width() * 0.5)))
                     self.splitter.setSizes([430, 490])
                 if hasattr(self, 'main_splitter'):
                     self.main_splitter.setSizes([600, 400])
@@ -3567,8 +3652,8 @@ if PYQT_AVAILABLE:
                 
                 # Возвращаем левую панель и сплиттеры к стандартным размерам
                 if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                    self.left_card.setMinimumWidth(400)
-                    self.left_card.setMaximumWidth(480)
+                    self.left_card.setMinimumWidth(430)
+                    self.left_card.setMaximumWidth(max(430, int(self.width() * 0.5)))
                     self.splitter.setSizes([430, 490])
                 if hasattr(self, 'main_splitter'):
                     self.main_splitter.setSizes([600, 400])
@@ -3602,8 +3687,8 @@ if PYQT_AVAILABLE:
                 
                 # Возвращаем левую панель и сплиттеры к стандартным размерам при отсутствии файла
                 if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                    self.left_card.setMinimumWidth(400)
-                    self.left_card.setMaximumWidth(480)
+                    self.left_card.setMinimumWidth(430)
+                    self.left_card.setMaximumWidth(max(430, int(self.width() * 0.5)))
                     self.splitter.setSizes([430, 490])
                 if hasattr(self, 'main_splitter'):
                     self.main_splitter.setSizes([600, 400])
@@ -3621,8 +3706,8 @@ if PYQT_AVAILABLE:
                 
             # Увеличиваем вьюер за счет сжатия таблицы КТ и логов (левая панель со структурами сохраняет стандартный размер!)
             if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                self.left_card.setMinimumWidth(400)
-                self.left_card.setMaximumWidth(480)
+                self.left_card.setMinimumWidth(430)
+                self.left_card.setMaximumWidth(max(430, int(self.width() * 0.5)))
                 self.splitter.setSizes([430, 490])
             if hasattr(self, 'main_splitter'):
                 self.main_splitter.setSizes([150, 850])
@@ -4835,8 +4920,8 @@ if PYQT_AVAILABLE:
             
             widget = QWidget()
             layout = QVBoxLayout(widget)
-            layout.setContentsMargins(6, 6, 6, 6)
-            layout.setSpacing(6)
+            layout.setContentsMargins(6, 4, 6, 4)
+            layout.setSpacing(4)
             
             header = QLabel("📊 Статистика автооконтурирований")
             header.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
@@ -4904,7 +4989,7 @@ if PYQT_AVAILABLE:
             layout.addWidget(time_widget)
             
             table_lbl = QLabel("🕒 Последние запуски:")
-            table_lbl.setStyleSheet("font-weight: bold; color: #ffffff;")
+            table_lbl.setStyleSheet("font-weight: bold; color: #ffffff; margin-top: 4px; margin-bottom: 2px;")
             layout.addWidget(table_lbl)
             
             self.stats_table = QTableWidget()
@@ -4932,7 +5017,7 @@ if PYQT_AVAILABLE:
             layout.addWidget(self.stats_table)
             
             organs_lbl = QLabel("🔝 Популярные органы:")
-            organs_lbl.setStyleSheet("font-weight: bold; color: #ffffff;")
+            organs_lbl.setStyleSheet("font-weight: bold; color: #ffffff; margin-top: 4px; margin-bottom: 2px;")
             layout.addWidget(organs_lbl)
             
             self.stats_organs_list = QListWidget()
@@ -5579,6 +5664,23 @@ if PYQT_AVAILABLE:
             except Exception as e:
                 logger.error(f"Не удалось изменить приоритет задачи {job_id}: {e}")
                 QMessageBox.warning(self, "Ошибка изменения приоритета", f"Не удалось изменить приоритет: {e}")
+
+        def send_new_queue_order(self, job_ids: list):
+            """Отправляет обновленный порядок задач в очереди на бэкенд."""
+            try:
+                import requests
+                server_url = self.get_server_url()
+                res = requests.post(
+                    f"{server_url}/api/queue/reorder",
+                    json={"job_ids": job_ids},
+                    timeout=3
+                )
+                if res.status_code != 200:
+                    raise RuntimeError(res.text)
+                logger.info("Новый порядок очереди успешно отправлен на сервер.")
+            except Exception as e:
+                logger.error(f"Не удалось отправить новый порядок очереди на сервер: {e}")
+                QMessageBox.warning(self, "Ошибка сортировки", f"Не удалось изменить порядок задач: {e}")
 
 
 # ==============================================================================

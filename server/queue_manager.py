@@ -74,6 +74,9 @@ class QueueManager:
         from config import StatisticsManager
         self.stats_mgr = StatisticsManager()
         
+        # Очищаем старые папки от предыдущих запусков при старте
+        self._clear_jobs_directory_on_startup()
+        
         # Фоновый рабочий поток
         self.worker_thread = None
         self.is_running = True
@@ -91,6 +94,43 @@ class QueueManager:
         self.is_running = False
         if self.worker_thread:
             self.worker_thread.join(timeout=2)
+
+    def _clear_jobs_directory_on_startup(self):
+        """Полная очистка папки jobs/ при старте сервера."""
+        logger.info("Выполняется очистка папки jobs/ при старте сервера...")
+        try:
+            if self.jobs_root.exists():
+                for p in self.jobs_root.iterdir():
+                    if p.is_dir():
+                        shutil.rmtree(p, ignore_errors=True)
+                    elif p.is_file():
+                        p.unlink(missing_ok=True)
+            logger.info("Папка jobs/ успешно очищена на старте.")
+        except Exception as e:
+            logger.error(f"Не удалось очистить папку jobs/ на старте: {e}")
+
+    def _cleanup_old_jobs(self, max_age_hours: float = 24.0):
+        """Очищает завершенные задачи, которые старше max_age_hours часов."""
+        now = time.time()
+        max_age_seconds = max_age_hours * 3600
+        
+        with self.lock:
+            jobs_to_remove = []
+            for job_id, job in list(self.jobs.items()):
+                if job.status in ["SUCCESS", "FAILED", "CANCELLED"]:
+                    completed_time = job.completed_at or job.created_at
+                    if now - completed_time > max_age_seconds:
+                        jobs_to_remove.append(job_id)
+            
+            for job_id in jobs_to_remove:
+                self.jobs.pop(job_id, None)
+                job_dir = self.jobs_root / job_id
+                if job_dir.exists():
+                    try:
+                        shutil.rmtree(job_dir, ignore_errors=True)
+                        logger.info(f"Старая задача {job_id} полностью удалена из jobs/ по таймауту хранения.")
+                    except Exception as e:
+                        logger.error(f"Не удалось удалить старую папку задачи {job_id}: {e}")
 
     def add_job(self, client_name: str, temp_zip_path: Path, options: dict) -> str:
         """Добавление новой задачи в очередь."""
@@ -165,18 +205,33 @@ class QueueManager:
             self.is_paused = False
             logger.info("Обработка очереди возобновлена.")
 
+    def reorder_queue(self, new_order: List[str]) -> bool:
+        """Изменение порядка PENDING задач в очереди."""
+        with self.lock:
+            valid_pending_ids = [jid for jid in new_order if jid in self.pending_queue]
+            for jid in self.pending_queue:
+                if jid not in valid_pending_ids:
+                    valid_pending_ids.append(jid)
+            self.pending_queue = valid_pending_ids
+            logger.info(f"Очередь PENDING задач пересортирована оператором. Новый порядок: {self.pending_queue}")
+            return True
+
     def get_queue_info(self) -> List[dict]:
         """Возвращает структурированный список всех задач для отображения в GUI сервера."""
         with self.lock:
             info_list = []
             # Сначала добавляем выполняющиеся, затем PENDING, затем завершенные
             all_jobs = list(self.jobs.values())
-            # Сортируем: сначала PROCESSING, затем PENDING, затем остальные по времени добавления (новые сверху)
+            # Сортируем: сначала PROCESSING, затем PENDING (по порядку в pending_queue), затем остальные по времени добавления (новые сверху)
             def sort_key(j: ServerJob):
                 if j.status == "PROCESSING":
                     return (0, j.created_at)
                 elif j.status == "PENDING":
-                    return (1, j.created_at)
+                    try:
+                        idx = self.pending_queue.index(j.job_id)
+                    except ValueError:
+                        idx = 999999
+                    return (1, idx)
                 else:
                     return (2, -j.created_at)
                     
@@ -222,8 +277,23 @@ class QueueManager:
 
     def _worker_loop(self):
         """Главный цикл воркера: последовательно вытаскивает задачи из очереди и считает."""
+        last_cleanup_time = time.time()
+        # Выполняем одну очистку сразу при запуске воркера
+        try:
+            self._cleanup_old_jobs(max_age_hours=24.0)
+        except Exception as ce:
+            logger.error(f"Ошибка при первичной очистке задач: {ce}")
+            
         while self.is_running:
             try:
+                # Раз в 30 минут (1800 сек) выполняем очистку папки jobs
+                if time.time() - last_cleanup_time > 1800:
+                    try:
+                        self._cleanup_old_jobs(max_age_hours=24.0)
+                    except Exception as ce:
+                        logger.error(f"Ошибка при периодической очистке задач: {ce}")
+                    last_cleanup_time = time.time()
+
                 # 1. Проверяем паузу сервера и наличие задач
                 next_job_id = None
                 with self.lock:
@@ -366,23 +436,27 @@ class QueueManager:
         except Exception as e:
             # Обработка сбоя или отмены
             logger.error(f"Ошибка выполнения задачи {job.job_id}: {e}")
+            is_cancelled = (job.status == "CANCELLED" or "отмен" in str(e).lower())
             with self.lock:
-                if job.status != "CANCELLED":
+                if is_cancelled:
+                    job.status = "CANCELLED"
+                    job.current_step = "Отменено пользователем."
+                else:
                     job.status = "FAILED"
                     job.error_message = str(e)
                     job.current_step = f"Ошибка: {e}"
-                    job.completed_at = time.time()
-                    
-                    try:
-                        self.stats_mgr.record_run(
-                            status="failed",
-                            elapsed_seconds=time.time() - (job.started_at or time.time()),
-                            organs_contoured=[],
-                            preset_name=job.options.get("preset_name", "Ошибка"),
-                            precision_mode=job.options.get("precision_mode", "normal")
-                        )
-                    except Exception:
-                        pass
+                job.completed_at = time.time()
+                
+                try:
+                    self.stats_mgr.record_run(
+                        status="cancelled" if is_cancelled else "failed",
+                        elapsed_seconds=time.time() - (job.started_at or time.time()),
+                        organs_contoured=[],
+                        preset_name=job.options.get("preset_name", "Ошибка"),
+                        precision_mode=job.options.get("precision_mode", "normal")
+                    )
+                except Exception as se:
+                    logger.warning(f"Не удалось записать статистику отмены/сбоя сервера: {se}")
             
             # Полная очистка при сбое (результата нет)
             self._cleanup_job_dir(job.job_id, keep_result=False)

@@ -1,13 +1,13 @@
 {
-  "total_runs": 7,
-  "successful_runs": 1,
+  "total_runs": 13,
+  "successful_runs": 3,
   "failed_runs": 2,
-  "cancelled_runs": 4,
-  "total_organs_contoured": 13,
-  "total_elapsed_time_seconds": 617.6600487232208,
+  "cancelled_runs": 8,
+  "total_organs_contoured": 41,
+  "total_elapsed_time_seconds": 874.207775592804,
   "organ_stats": {
-    "body": 1,
-    "spinal_cord": 1,
+    "body": 3,
+    "spinal_cord": 3,
     "urinary_bladder": 1,
     "prostate": 1,
     "sacrum": 1,
@@ -18,9 +18,69 @@
     "iliac_artery_left": 1,
     "iliac_artery_right": 1,
     "colon": 1,
-    "small_bowel": 1
+    "small_bowel": 1,
+    "eye_left": 2,
+    "eye_right": 2,
+    "lens_left": 2,
+    "lens_right": 2,
+    "common_carotid_artery_left": 2,
+    "common_carotid_artery_right": 2,
+    "parotid_gland_left": 2,
+    "parotid_gland_right": 2,
+    "submandibular_gland_left": 2,
+    "submandibular_gland_right": 2,
+    "auditory_canal_left": 2,
+    "auditory_canal_right": 2
   },
   "recent_runs": [
+    {
+      "timestamp": "2026-05-27 19:02:41",
+      "status": "cancelled",
+      "preset": "Голова и шея (Head & Neck)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
+    {
+      "timestamp": "2026-05-27 19:02:29",
+      "status": "cancelled",
+      "preset": "Голова и шея (Head & Neck)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
+    {
+      "timestamp": "2026-05-27 18:15:12",
+      "status": "success",
+      "preset": "Голова и шея (Head & Neck)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 14
+    },
+    {
+      "timestamp": "2026-05-27 18:15:10",
+      "status": "success",
+      "preset": "head_neck_oar",
+      "precision": "normal",
+      "elapsed_seconds": 256.5,
+      "organs_count": 14
+    },
+    {
+      "timestamp": "2026-05-27 17:50:37",
+      "status": "cancelled",
+      "preset": "Голова и шея (Head & Neck)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
+    {
+      "timestamp": "2026-05-27 17:28:23",
+      "status": "cancelled",
+      "preset": "Голова и шея (Head & Neck)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
     {
       "timestamp": "2026-05-27 16:48:25",
       "status": "cancelled",

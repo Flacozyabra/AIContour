@@ -12,7 +12,8 @@ import json
 import logging
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
+from pydantic import BaseModel
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
@@ -148,18 +149,25 @@ def download_job_result(job_id: str):
     )
 
 @app.delete("/api/jobs/{job_id}/cancel")
-def cancel_job(job_id: str):
+def cancel_job(job_id: str, client_name: Optional[str] = None):
     """
-    Отмена задачи.
+    Отмена задачи с проверкой прав доступа.
     """
+    job = queue_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача с указанным ID не найдена.")
+        
+    # Если передан client_name, это запрос от клиента
+    if client_name is not None:
+        if job.client_name != client_name:
+            raise HTTPException(status_code=403, detail="Вы можете отменять только свои задачи.")
+        if job.status == "SUCCESS":
+            raise HTTPException(status_code=400, detail="Задача уже выполнена. Отмена невозможна.")
+
     success = queue_manager.cancel_job(job_id)
     if success:
         return {"job_id": job_id, "status": "CANCELLED", "message": "Задача успешно отменена."}
     else:
-        # Если задача завершена или уже отменена
-        job = queue_manager.get_job(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Задача с указанным ID не найдена.")
         return {
             "job_id": job_id,
             "status": job.status,
@@ -186,6 +194,20 @@ def prioritize_job(job_id: str):
                 "status": job.status,
                 "message": f"Невозможно изменить приоритет задачи в текущем статусе: {job.status}"
             }
+
+class ReorderPayload(BaseModel):
+    job_ids: List[str]
+
+@app.post("/api/queue/reorder")
+def reorder_queue(payload: ReorderPayload):
+    """
+    Изменение порядка задач в очереди (только для PENDING задач).
+    """
+    success = queue_manager.reorder_queue(payload.job_ids)
+    if success:
+        return {"status": "success", "message": "Очередь успешно пересортирована."}
+    else:
+        raise HTTPException(status_code=400, detail="Не удалось пересортировать очередь.")
 
 @app.get("/api/server/status")
 def get_server_status():
