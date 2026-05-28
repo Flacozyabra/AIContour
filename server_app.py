@@ -41,11 +41,30 @@ try:
         QMessageBox, QFrame, QSplitter, QCheckBox, QDialog, QTextBrowser,
         QTabWidget, QColorDialog, QGroupBox,
         QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMenu,
-        QProgressDialog, QScrollArea, QGridLayout
+        QProgressDialog, QScrollArea, QGridLayout, QStyledItemDelegate, QStyleOptionViewItem
     )
-    from PyQt6.QtCore import QThread, pyqtSignal, Qt, QObject, QSettings, QTimer
+    from PyQt6.QtCore import QThread, pyqtSignal, Qt, QObject, QSettings, QTimer, QModelIndex
     from PyQt6.QtGui import QTextCursor, QBrush, QColor, QFont, QIcon, QPixmap, QPalette
     PYQT_AVAILABLE = True
+    
+    class OrganIndentDelegate(QStyledItemDelegate):
+        """Делегат для смещения не-header элементов (чекбокс + иконка + текст) списка органов вправо."""
+        def __init__(self, parent=None):
+            super().__init__(parent)
+
+        def initStyleOption(self, option: QStyleOptionViewItem, index: QModelIndex):
+            super().initStyleOption(option, index)
+            role = index.data(Qt.ItemDataRole.UserRole)
+            if role != "header":
+                # Сдвигаем всю строку элемента вправо на 20 пикселей
+                option.rect.setLeft(option.rect.left() + 20)
+
+        def editorEvent(self, event, model, option: QStyleOptionViewItem, index: QModelIndex):
+            role = index.data(Qt.ItemDataRole.UserRole)
+            if role != "header":
+                # Сдвигаем интерактивную зону кликов мыши на 20 пикселей
+                option.rect.setLeft(option.rect.left() + 20)
+            return super().editorEvent(event, model, option, index)
 except ImportError:
     PYQT_AVAILABLE = False
 
@@ -1982,6 +2001,7 @@ if PYQT_AVAILABLE:
             self.organs_header = QLabel("Органы для автооконтурирования: 0 из 0")
             self.organs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.organs_list = QListWidget()
+            self.organs_list.setItemDelegate(OrganIndentDelegate(self))
             self.organs_list.itemChanged.connect(self.on_organ_item_changed)
             self.organs_list.itemClicked.connect(self.on_organ_item_clicked)
             self.imported_items = []
@@ -2786,11 +2806,11 @@ if PYQT_AVAILABLE:
                     has_license = hasattr(self.engine, "licenses") and isinstance(self.engine.licenses, str) and self.engine.licenses.strip()
                     
                     if is_licensed_task and not has_license:
-                        item = QListWidgetItem(f"        [🔒] {ru_name} (Нужна лицензия)")
+                        item = QListWidgetItem(f"   [🔒] {ru_name} (Нужна лицензия)")
                         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable & ~Qt.ItemFlag.ItemIsEnabled)
                         item.setForeground(QBrush(QColor("#777777")))
                     else:
-                        item = QListWidgetItem(f"        {ru_name}")
+                        item = QListWidgetItem(f"   {ru_name}")
                         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                         item.setCheckState(Qt.CheckState.Unchecked)
                         
@@ -2855,11 +2875,11 @@ if PYQT_AVAILABLE:
                     has_license = hasattr(self.engine, "licenses") and isinstance(self.engine.licenses, str) and self.engine.licenses.strip()
                     
                     if is_licensed_task and not has_license:
-                        item = QListWidgetItem(f"        [🔒] {ru_name} (Нужна лицензия)")
+                        item = QListWidgetItem(f"   [🔒] {ru_name} (Нужна лицензия)")
                         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable & ~Qt.ItemFlag.ItemIsEnabled)
                         item.setForeground(QBrush(QColor("#777777")))
                     else:
-                        item = QListWidgetItem(f"        {ru_name}")
+                        item = QListWidgetItem(f"   {ru_name}")
                         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                         item.setCheckState(Qt.CheckState.Unchecked)
                         
