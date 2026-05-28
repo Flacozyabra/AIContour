@@ -4720,13 +4720,16 @@ if PYQT_AVAILABLE:
             
             try:
                 preset_name = self.preset_combo.currentText()
-                preset_key = "abdominal_oar"
                 if "Thorax" in preset_name or "Грудная" in preset_name:
                     preset_key = "thoracic_oar"
                 elif "Pelvis" in preset_name or "Малый" in preset_name:
                     preset_key = "pelvis_oar"
                 elif "Head & Neck" in preset_name or "Голова" in preset_name:
                     preset_key = "head_neck_oar"
+                elif "Brain Structures" in preset_name or "головного мозга" in preset_name:
+                    preset_key = "brain_structures"
+                elif "Abdomen" in preset_name or "Брюшная" in preset_name:
+                    preset_key = "abdominal_oar"
                 elif "Brachytherapy" in preset_name or "Брахитерапия" in preset_name:
                     preset_key = "brachytherapy_oar"
                 else:
