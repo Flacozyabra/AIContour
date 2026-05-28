@@ -39,3 +39,8 @@ config/licenses.json
 logs/
 presets.json.bak
 
+# Файлы статистики и временных задач
+config/statistics.json
+config/statistics.json.bak
+jobs/
+
