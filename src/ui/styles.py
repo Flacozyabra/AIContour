@@ -324,8 +324,19 @@ QProgressBar {
 }
 
 QProgressBar::chunk {
-    background-color: #007acc;
-    border-radius: 3px;
+    background-color: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 1,
+        stop: 0.00 #00bda6, 
+        stop: 0.25 #00bda6,
+        stop: 0.25 #00a38f, 
+        stop: 0.50 #00a38f,
+        stop: 0.50 #00bda6, 
+        stop: 0.75 #00bda6,
+        stop: 0.75 #00a38f, 
+        stop: 1.00 #00a38f
+    );
+    background-size: 40px 40px;
+    border-radius: 4px;
 }
 
 QTextEdit {

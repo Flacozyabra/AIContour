@@ -1899,38 +1899,12 @@ if PYQT_AVAILABLE:
             self.chk_show_structures.setEnabled(False)
             self.chk_show_structures.setStyleSheet("""
                 QCheckBox {
-                    color: #2ecc71;
+                    color: #ffffff;
                     font-weight: bold;
                     font-size: 13px;
-                    spacing: 8px;
                 }
                 QCheckBox:disabled {
-                    color: rgba(46, 204, 113, 0.35);
-                }
-                QCheckBox::indicator {
-                    width: 16px;
-                    height: 16px;
-                    border: 2px solid #2ecc71;
-                    border-radius: 4px;
-                    background-color: #1a1a1a;
-                }
-                QCheckBox::indicator:hover {
-                    border-color: #27ae60;
-                    background-color: #242424;
-                }
-                QCheckBox::indicator:checked {
-                    border-color: #2ecc71;
-                    background-color: #2ecc71;
-                    image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik05IDE2LjJMNC44IDEybC0xLjQgMS40TDkgMTkgMjEgN2wtMS40LTEuNEw5IDE2LjJ6IiBmaWxsPSIjZmZmZmZmIi8+PC9zdmc+");
-                }
-                QCheckBox::indicator:disabled {
-                    border-color: rgba(46, 204, 113, 0.15);
-                    background-color: #1a1a1a;
-                }
-                QCheckBox::indicator:checked:disabled {
-                    border-color: rgba(46, 204, 113, 0.35);
-                    background-color: rgba(46, 204, 113, 0.35);
-                    image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik05IDE2LjJMNC44IDEybC0xLjQgMS40TDkgMTkgMjEgN2wtMS40LTEuNEw5IDE6LjJ6IiBmaWxsPSIjYWFhYWFhIi8+PC9zdmc+");
+                    color: #666666;
                 }
             """)
             self.chk_show_structures.stateChanged.connect(self.on_show_structures_toggled)
@@ -2901,13 +2875,18 @@ if PYQT_AVAILABLE:
             self._cached_rtstruct = None
             self._cached_rtstruct_path = None
             
+            was_checked = False
+            if hasattr(self, 'chk_show_structures'):
+                was_checked = self.chk_show_structures.isChecked()
+
             if hasattr(self, 'rtstruct_combo'):
                 self.rtstruct_combo.blockSignals(True)
                 self.rtstruct_combo.clear()
                 
-                # Снимаем галочку и отключаем её
+                # Снимаем галочку и отключаем её, только если режим просмотра не был активен
                 self.chk_show_structures.blockSignals(True)
-                self.chk_show_structures.setChecked(False)
+                if not was_checked:
+                    self.chk_show_structures.setChecked(False)
                 self.chk_show_structures.setEnabled(False)
                 self.chk_show_structures.blockSignals(False)
                 
@@ -2927,15 +2906,16 @@ if PYQT_AVAILABLE:
                 # Принудительно возвращаем видимость всем стандартным органам с учетом свертывания
                 self.restore_group_visibilities()
                 
-                # Возвращаем левую панель и сплиттеры к стандартным размерам
-                if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                    self.left_card.setMinimumWidth(400)
-                    self.left_card.setMaximumWidth(480)
-                    self.splitter.setSizes([430, 490])
-                if hasattr(self, 'main_splitter'):
-                    self.main_splitter.setSizes([600, 400])
-                if hasattr(self, 'v_splitter'):
-                    self.v_splitter.setSizes([500, 500])
+                # Возвращаем левую панель и сплиттеры к стандартным размерам, только если не был включен режим просмотра
+                if not was_checked:
+                    if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
+                        self.left_card.setMinimumWidth(400)
+                        self.left_card.setMaximumWidth(480)
+                        self.splitter.setSizes([430, 490])
+                    if hasattr(self, 'main_splitter'):
+                        self.main_splitter.setSizes([600, 400])
+                    if hasattr(self, 'v_splitter'):
+                        self.v_splitter.setSizes([500, 500])
                 if hasattr(self, 'dicom_viewer'):
                     try:
                         self.dicom_viewer.getView().autoRange()
@@ -2989,10 +2969,30 @@ if PYQT_AVAILABLE:
                 
                 self.update_merge_combo_state()
 
-                if self.chk_show_structures.isChecked():
+                if was_checked:
+                    self.chk_show_structures.blockSignals(True)
+                    self.chk_show_structures.setChecked(True)
+                    self.chk_show_structures.blockSignals(False)
+                    self.on_show_structures_changed()
+                elif self.chk_show_structures.isChecked():
                     self.on_show_structures_changed()
                 else:
                     self.update_organs_list_highlighting()
+            else:
+                if was_checked:
+                    self.chk_show_structures.blockSignals(True)
+                    self.chk_show_structures.setChecked(False)
+                    self.chk_show_structures.blockSignals(False)
+                    
+                    if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
+                        self.left_card.setMinimumWidth(400)
+                        self.left_card.setMaximumWidth(480)
+                        self.splitter.setSizes([430, 490])
+                    if hasattr(self, 'main_splitter'):
+                        self.main_splitter.setSizes([600, 400])
+                    if hasattr(self, 'v_splitter'):
+                        self.v_splitter.setSizes([500, 500])
+                self.update_organs_list_highlighting()
 
         def update_merge_combo_state(self):
             """Обновляет доступность выпадающего списка RTSTRUCT в настройках."""
