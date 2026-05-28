@@ -12,7 +12,7 @@ import json
 import logging
 import tempfile
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
@@ -362,3 +362,87 @@ def unblock_client(client_id: str):
     blacklist_manager.unblock(client_id)
     logger.info(f"Клиент '{client_id}' успешно разблокирован.")
     return {"status": "success", "message": f"Клиент '{client_id}' разблокирован."}
+
+
+# ================================================================================
+# Эндпоинты для управления конфигурациями пресетов, цветов, локализаций и лицензий
+# ================================================================================
+
+class PresetPayload(BaseModel):
+    name: str
+    organs: List[str]
+    colors: Optional[Dict[str, List[int]]] = None
+
+class ColorsPayload(BaseModel):
+    colors: Dict[str, List[int]]
+
+class LicensePayload(BaseModel):
+    license_key: str
+
+@app.get("/api/config")
+def get_server_config():
+    """
+    Возвращает полную конфигурацию пресетов, цветов, переводов и лицензий с сервера.
+    """
+    engine = queue_manager.engine
+    return {
+        "presets": engine.presets,
+        "preset_colors": engine.preset_colors,
+        "colors": engine.colors,
+        "ru_names": engine.ru_names,
+        "licenses": getattr(engine, "licenses", "")
+    }
+
+@app.post("/api/presets")
+def save_server_preset(payload: PresetPayload):
+    """
+    Создает или обновляет OAR-пресет и его кастомные цвета на сервере.
+    """
+    engine = queue_manager.engine
+    name = payload.name
+    engine.presets[name] = payload.organs
+    if payload.colors is not None:
+        engine.preset_colors[name] = payload.colors
+    else:
+        engine.preset_colors.pop(name, None)
+    
+    engine.save_presets_config()
+    logger.info(f"Пользовательский пресет '{name}' успешно сохранен на сервере.")
+    return {"status": "success", "message": f"Пресет '{name}' успешно сохранен на сервере."}
+
+@app.delete("/api/presets/{name}")
+def delete_server_preset(name: str):
+    """
+    Удаляет OAR-пресет с сервера.
+    """
+    engine = queue_manager.engine
+    if name in engine.presets:
+        engine.presets.pop(name, None)
+        engine.preset_colors.pop(name, None)
+        engine.save_presets_config()
+        logger.info(f"Пользовательский пресет '{name}' успешно удален с сервера.")
+        return {"status": "success", "message": f"Пресет '{name}' успешно удален."}
+    else:
+        raise HTTPException(status_code=404, detail=f"Пресет '{name}' не найден на сервере.")
+
+@app.post("/api/config/colors")
+def save_server_colors(payload: ColorsPayload):
+    """
+    Обновляет глобальную цветовую схему органов на сервере.
+    """
+    engine = queue_manager.engine
+    engine.colors.update(payload.colors)
+    engine.save_presets_config()
+    logger.info("Глобальные цвета органов успешно обновлены на сервере.")
+    return {"status": "success", "message": "Цвета успешно сохранены на сервере."}
+
+@app.post("/api/config/licenses")
+def save_server_license(payload: LicensePayload):
+    """
+    Сохраняет или обновляет лицензионный ключ на сервере.
+    """
+    engine = queue_manager.engine
+    engine.licenses = payload.license_key
+    engine.save_presets_config()
+    logger.info("Лицензионный ключ успешно обновлен на сервере.")
+    return {"status": "success", "message": "Лицензионный ключ обновлен на сервере."}

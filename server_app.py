@@ -813,6 +813,7 @@ if PYQT_AVAILABLE:
                     QMessageBox.StandardButton.No
                 )
                 if reply == QMessageBox.StandardButton.Yes:
+                    self.engine.load_presets_config()
                     self.engine.licenses = key
                     self.engine.save_presets_config()
                     self._write_license_to_totalseg_config(key)
@@ -833,6 +834,7 @@ if PYQT_AVAILABLE:
                 return
                 
             # Сохранение валидной лицензии
+            self.engine.load_presets_config()
             self.engine.licenses = key
             self.engine.save_presets_config()
             self._write_license_to_totalseg_config(key)
@@ -854,6 +856,7 @@ if PYQT_AVAILABLE:
                 QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.Yes:
+                self.engine.load_presets_config()
                 self.engine.licenses = ""
                 self.engine.save_presets_config()
                 self._write_license_to_totalseg_config("")
@@ -4291,6 +4294,7 @@ if PYQT_AVAILABLE:
                 return
 
             # 3. Сохраняем в presets движка
+            self.engine.load_presets_config()
             self.engine.presets[preset_name] = checked_organs
             
             preset_colors_dict = {}
@@ -4355,7 +4359,9 @@ if PYQT_AVAILABLE:
             if reply == QMessageBox.StandardButton.Yes:
                 try:
                     # Удаляем из движка
+                    self.engine.load_presets_config()
                     self.engine.presets.pop(current_preset, None)
+                    self.engine.preset_colors.pop(current_preset, None)
                     self.engine.save_presets_config()
                     
                     # Обновляем комбобокс и сбрасываем выбор
@@ -4406,6 +4412,7 @@ if PYQT_AVAILABLE:
 
             # Подтягиваем индивидуальные цвета для пользовательского пресета при автоподборе
             if matched in self.engine.preset_colors:
+                self.engine.load_presets_config()
                 preset_colors = self.engine.preset_colors[matched]
                 for org, rgb in preset_colors.items():
                     self.engine.colors[org] = rgb
@@ -4441,6 +4448,7 @@ if PYQT_AVAILABLE:
                     self.on_color_preset_changed(self.color_preset_combo.currentText())
             # Подтягиваем индивидуальные цвета для пользовательского пресета
             elif preset_name in self.engine.preset_colors:
+                self.engine.load_presets_config()
                 preset_colors = self.engine.preset_colors[preset_name]
                 for org, rgb in preset_colors.items():
                     self.engine.colors[org] = rgb
@@ -4770,6 +4778,7 @@ if PYQT_AVAILABLE:
                         self.engine.preset_colors[current_preset] = {}
                     self.engine.preset_colors[current_preset][organ_name] = new_rgb
                 
+                self.engine.load_presets_config()
                 self.engine.save_presets_config()
                 
                 # Обновляем иконку
@@ -4803,6 +4812,7 @@ if PYQT_AVAILABLE:
                     self.engine.colors[organ] = color
                 
                 # Сохраняем в конфигурационные файлы config/
+                self.engine.load_presets_config()
                 self.engine.save_presets_config()
                 
                 # Обновляем все иконки в списке с временной блокировкой сигналов

@@ -795,11 +795,22 @@ if PYQT_AVAILABLE:
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     self.engine.licenses = key
-                    self.engine.save_presets_config()
                     self._write_license_to_totalseg_config(key)
+                    
+                    server_url = self.get_server_url()
+                    if server_url:
+                        client_id = self.client_name_edit.text().strip()
+                        headers = {"X-Client-ID": client_id}
+                        try:
+                            import requests
+                            requests.post(f"{server_url}/api/config/licenses", json={"license_key": key}, headers=headers, timeout=5)
+                            self.sync_config_from_server()
+                        except Exception as se:
+                            logger.warning(f"Не удалось отправить лицензию на сервер: {se}")
+                            
                     self.edit_key.clear()
                     self.update_status_display()
-                    QMessageBox.information(self, "Успех", "Лицензия сохранена локально.")
+                    QMessageBox.information(self, "Успех", "Лицензия сохранена.")
                 return
                 
             QApplication.restoreOverrideCursor()
@@ -815,8 +826,19 @@ if PYQT_AVAILABLE:
                 
             # Сохранение валидной лицензии
             self.engine.licenses = key
-            self.engine.save_presets_config()
             self._write_license_to_totalseg_config(key)
+            
+            server_url = self.get_server_url()
+            if server_url:
+                client_id = self.client_name_edit.text().strip()
+                headers = {"X-Client-ID": client_id}
+                try:
+                    import requests
+                    requests.post(f"{server_url}/api/config/licenses", json={"license_key": key}, headers=headers, timeout=5)
+                    self.sync_config_from_server()
+                except Exception as se:
+                    logger.warning(f"Не удалось отправить лицензию на сервер: {se}")
+                    
             self.edit_key.clear()
             self.update_status_display()
             QMessageBox.information(self, "Успех", "Лицензия для суб-моделей успешно активирована и сохранена! ✅")
@@ -836,8 +858,19 @@ if PYQT_AVAILABLE:
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self.engine.licenses = ""
-                self.engine.save_presets_config()
                 self._write_license_to_totalseg_config("")
+                
+                server_url = self.get_server_url()
+                if server_url:
+                    client_id = self.client_name_edit.text().strip()
+                    headers = {"X-Client-ID": client_id}
+                    try:
+                        import requests
+                        requests.post(f"{server_url}/api/config/licenses", json={"license_key": ""}, headers=headers, timeout=5)
+                        self.sync_config_from_server()
+                    except Exception as se:
+                        logger.warning(f"Не удалось удалить лицензию на сервере: {se}")
+                        
                 self.update_status_display()
                 QMessageBox.information(self, "Успех", "Лицензионный ключ успешно удален.")
 
@@ -1342,6 +1375,7 @@ if PYQT_AVAILABLE:
                 del self._startup_log_buffer
 
             self.load_settings()
+            self.sync_config_from_server()
 
         def init_ui(self):
             # Установка премиальной иконки приложения
@@ -2473,6 +2507,76 @@ if PYQT_AVAILABLE:
                         checked_organs.append(organ_name)
             self.settings.setValue("checked_organs", checked_organs)
 
+        def sync_config_from_server(self) -> bool:
+            """Синхронизирует всю конфигурацию пресетов, цветов и лицензий с сервера FastAPI."""
+            import requests
+            server_url = self.get_server_url()
+            if not server_url:
+                return False
+            
+            client_id = self.client_name_edit.text().strip()
+            headers = {"X-Client-ID": client_id}
+            try:
+                # 1. Запоминаем текущие отмеченные галочки в списке OAR
+                checked_organs = []
+                for i in range(self.organs_list.count()):
+                    item = self.organs_list.item(i)
+                    org = item.data(Qt.ItemDataRole.UserRole)
+                    if org != "header" and item.checkState() == Qt.CheckState.Checked:
+                        if org not in checked_organs:
+                            checked_organs.append(org)
+                            
+                # Запоминаем выбранный пресет
+                saved_preset_text = self.preset_combo.currentText()
+                
+                # 2. Выполняем GET-запрос к API конфигурации
+                r = requests.get(f"{server_url}/api/config", headers=headers, timeout=2.0)
+                if r.status_code == 200:
+                    data = r.json()
+                    
+                    # Обновляем локальные структуры движка
+                    self.engine.presets = data.get("presets", {})
+                    self.engine.preset_colors = data.get("preset_colors", {})
+                    self.engine.colors = data.get("colors", {})
+                    self.engine.ru_names = data.get("ru_names", {})
+                    self.engine.licenses = data.get("licenses", "")
+                    
+                    # 3. Полностью инициализируем пресеты и органы в GUI
+                    self.init_presets_and_organs()
+                    self.update_status_display()
+                    
+                    # 4. Восстанавливаем галочки
+                    self.organs_list.blockSignals(True)
+                    try:
+                        for i in range(self.organs_list.count()):
+                            item = self.organs_list.item(i)
+                            org = item.data(Qt.ItemDataRole.UserRole)
+                            if org != "header" and org in checked_organs:
+                                item.setCheckState(Qt.CheckState.Checked)
+                    finally:
+                        self.organs_list.blockSignals(False)
+                        
+                    self.update_headers_check_states()
+                    self.update_checked_organs_count()
+                    
+                    # Восстанавливаем активный пресет в комбобоксе
+                    idx = self.preset_combo.findText(saved_preset_text)
+                    if idx >= 0:
+                        self.preset_combo.blockSignals(True)
+                        self.preset_combo.setCurrentIndex(idx)
+                        self.preset_combo.blockSignals(False)
+                    else:
+                        self.preset_combo.setCurrentIndex(0)
+                        
+                    logging.info("Конфигурация успешно синхронизирована с сервером. ✅")
+                    return True
+                else:
+                    logging.warning(f"Сервер вернул код {r.status_code} при синхронизации конфигурации.")
+                    return False
+            except Exception as e:
+                logging.warning(f"Не удалось синхронизировать конфигурацию с сервером: {e}")
+                return False
+
         def test_server_connection(self):
             """Проверяет подключение к указанному FastAPI серверу."""
             import requests
@@ -2492,6 +2596,7 @@ if PYQT_AVAILABLE:
                 if r.status_code == 200:
                     self.lbl_conn_status.setText("Статус: подключено 🟢")
                     self.lbl_conn_status.setStyleSheet("color: #2ecc71; font-weight: bold;")
+                    self.sync_config_from_server()
                     QMessageBox.information(
                         self, "Успех", 
                         f"Успешное соединение с сервером AI Contour!\n\n"
@@ -3775,8 +3880,9 @@ if PYQT_AVAILABLE:
                 self.on_show_structures_changed()
 
         def save_current_preset_dialog(self):
-            """Открывает диалог для ввода имени нового пресета и сохраняет отмеченные OAR в конфигурацию."""
+            """Открывает диалог для ввода имени нового пресета и отправляет его на сервер."""
             from PyQt6.QtWidgets import QInputDialog, QMessageBox
+            import requests
             
             # 1. Получаем список отмеченных органов
             checked_organs = []
@@ -3821,35 +3927,55 @@ if PYQT_AVAILABLE:
                 )
                 return
 
-            # 3. Сохраняем в presets движка
-            self.engine.presets[preset_name] = checked_organs
-            
+            # Сбор цветов
             preset_colors_dict = {}
             for org in checked_organs:
                 if org in self.engine.colors:
                     preset_colors_dict[org] = self.engine.colors[org]
-            self.engine.preset_colors[preset_name] = preset_colors_dict
-            
-            self.engine.save_presets_config()
 
-            # 4. Обновляем выпадающий список пресетов и выставляем сохраненный пресет активным
-            self.init_presets_and_organs()
-            
-            idx = self.preset_combo.findText(preset_name)
-            if idx >= 0:
-                self.preset_combo.blockSignals(True)
-                self.preset_combo.setCurrentIndex(idx)
-                self.preset_combo.blockSignals(False)
-                
-            QMessageBox.information(
-                self, 
-                "Успех", 
-                f"Пользовательский пресет '{preset_name}' успешно сохранен! ✅"
-            )
+            # 3. Отправляем по сети на сервер
+            server_url = self.get_server_url()
+            if not server_url:
+                QMessageBox.critical(self, "Ошибка", "Не настроен адрес сервера.")
+                return
+
+            client_id = self.client_name_edit.text().strip()
+            headers = {"X-Client-ID": client_id}
+            payload = {
+                "name": preset_name,
+                "organs": checked_organs,
+                "colors": preset_colors_dict
+            }
+
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                r = requests.post(f"{server_url}/api/presets", json=payload, headers=headers, timeout=5)
+                QApplication.restoreOverrideCursor()
+                if r.status_code == 200:
+                    # 4. Обновляем конфигурацию с сервера
+                    self.sync_config_from_server()
+                    
+                    idx = self.preset_combo.findText(preset_name)
+                    if idx >= 0:
+                        self.preset_combo.blockSignals(True)
+                        self.preset_combo.setCurrentIndex(idx)
+                        self.preset_combo.blockSignals(False)
+                        
+                    QMessageBox.information(
+                        self, 
+                        "Успех", 
+                        f"Пользовательский пресет '{preset_name}' успешно сохранен на сервере! ✅"
+                    )
+                else:
+                    QMessageBox.critical(self, "Ошибка", f"Сервер вернул код {r.status_code} при сохранении пресета.")
+            except Exception as e:
+                QApplication.restoreOverrideCursor()
+                QMessageBox.critical(self, "Сбой сети", f"Не удалось связаться с сервером для сохранения пресета:\n{e}")
 
         def delete_current_preset_dialog(self) -> None:
-            """Запрашивает подтверждение и удаляет выбранный пользовательский пресет."""
+            """Запрашивает подтверждение и удаляет выбранный пользовательский пресет по сети."""
             from PyQt6.QtWidgets import QMessageBox
+            import requests
             
             current_preset: str = self.preset_combo.currentText().strip()
             
@@ -3884,20 +4010,34 @@ if PYQT_AVAILABLE:
             )
             
             if reply == QMessageBox.StandardButton.Yes:
+                server_url = self.get_server_url()
+                if not server_url:
+                    QMessageBox.critical(self, "Ошибка", "Не настроен адрес сервера.")
+                    return
+
+                client_id = self.client_name_edit.text().strip()
+                headers = {"X-Client-ID": client_id}
+                
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
                 try:
-                    # Удаляем из движка
-                    self.engine.presets.pop(current_preset, None)
-                    self.engine.save_presets_config()
+                    import urllib.parse
+                    safe_preset_name = urllib.parse.quote(current_preset)
+                    r = requests.delete(f"{server_url}/api/presets/{safe_preset_name}", headers=headers, timeout=5)
+                    QApplication.restoreOverrideCursor()
                     
-                    # Обновляем комбобокс и сбрасываем выбор
-                    self.init_presets_and_organs()
-                    
-                    QMessageBox.information(
-                        self,
-                        "Успех",
-                        f"Пользовательский пресет '{current_preset}' успешно удален! ✅"
-                    )
+                    if r.status_code == 200:
+                        # Синхронизируем конфигурацию с сервера
+                        self.sync_config_from_server()
+                        
+                        QMessageBox.information(
+                            self,
+                            "Успех",
+                            f"Пользовательский пресет '{current_preset}' успешно удален! ✅"
+                        )
+                    else:
+                        QMessageBox.critical(self, "Ошибка", f"Сервер вернул код {r.status_code} при удалении пресета.")
                 except Exception as e:
+                    QApplication.restoreOverrideCursor()
                     logging.exception(f"Ошибка при удалении пресета {current_preset}: {e}")
                     QMessageBox.critical(
                         self,
@@ -4261,6 +4401,7 @@ if PYQT_AVAILABLE:
 
         def pick_organ_color(self):
             """Открывает диалог выбора цвета для выделенного органа."""
+            import requests
             selected = self.organs_list.selectedItems()
             if not selected:
                 return
@@ -4301,7 +4442,41 @@ if PYQT_AVAILABLE:
                         self.engine.preset_colors[current_preset] = {}
                     self.engine.preset_colors[current_preset][organ_name] = new_rgb
                 
-                self.engine.save_presets_config()
+                # 3. Отправляем изменения на сервер
+                server_url = self.get_server_url()
+                if server_url:
+                    client_id = self.client_name_edit.text().strip()
+                    headers = {"X-Client-ID": client_id}
+                    
+                    try:
+                        # Отправляем глобальный цвет органа
+                        requests.post(f"{server_url}/api/config/colors", json={"colors": {organ_name: new_rgb}}, headers=headers, timeout=5)
+                        
+                        # Если выбран пользовательский пресет, отправляем обновленный пресет OAR целиком
+                        if current_preset not in DEFAULT_PRESET_NAMES and current_preset not in [
+                            "— Выберите пресет —",
+                            "Пользовательский (Custom)",
+                            "Все органы (All)"
+                        ] and current_preset:
+                            preset_organs = self.engine.presets.get(current_preset, [])
+                            preset_colors_dict = {}
+                            for org in preset_organs:
+                                if org in self.engine.colors:
+                                    preset_colors_dict[org] = self.engine.colors[org]
+                            if organ_name in preset_colors_dict:
+                                preset_colors_dict[organ_name] = new_rgb
+                                
+                            payload = {
+                                "name": current_preset,
+                                "organs": preset_organs,
+                                "colors": preset_colors_dict
+                            }
+                            requests.post(f"{server_url}/api/presets", json=payload, headers=headers, timeout=5)
+                        
+                        # Синхронизируем
+                        self.sync_config_from_server()
+                    except Exception as se:
+                        logger.warning(f"Не удалось отправить измененные цвета на сервер: {se}")
                 
                 # Обновляем иконку
                 self.update_item_color_icon(item, organ_name)
@@ -4333,8 +4508,17 @@ if PYQT_AVAILABLE:
                 for organ, color in palette.items():
                     self.engine.colors[organ] = color
                 
-                # Сохраняем в конфигурационные файлы config/
-                self.engine.save_presets_config()
+                # Отправляем новую цветовую гамму на сервер по сети
+                server_url = self.get_server_url()
+                if server_url:
+                    client_id = self.client_name_edit.text().strip()
+                    headers = {"X-Client-ID": client_id}
+                    try:
+                        import requests
+                        requests.post(f"{server_url}/api/config/colors", json={"colors": palette}, headers=headers, timeout=5)
+                        self.sync_config_from_server()
+                    except Exception as se:
+                        logger.warning(f"Не удалось отправить выбранную цветовую гамму на сервер: {se}")
                 
                 # Обновляем все иконки в списке с временной блокировкой сигналов
                 self.structures_list.blockSignals(True)
