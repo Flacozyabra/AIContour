@@ -3958,8 +3958,20 @@ if PYQT_AVAILABLE:
             if preset_name == "Пользовательский (Custom)":
                 return
 
+            DEFAULT_PRESET_NAMES = [
+                "Голова и шея (Head & Neck)",
+                "Грудная клетка (Thorax)",
+                "Брюшная полость (Abdomen)",
+                "Малый таз (Pelvis)",
+                "Отделы головного мозга (Brain Structures)"
+            ]
+
+            # Возвращаем цвета к глобальной палитре при выборе системного пресета
+            if preset_name in DEFAULT_PRESET_NAMES or preset_name in ["— Выберите пресет —", "Все органы (All)"]:
+                if hasattr(self, 'color_preset_combo'):
+                    self.on_color_preset_changed(self.color_preset_combo.currentText())
             # Подтягиваем индивидуальные цвета для пользовательского пресета
-            if preset_name in self.engine.preset_colors:
+            elif preset_name in self.engine.preset_colors:
                 preset_colors = self.engine.preset_colors[preset_name]
                 for org, rgb in preset_colors.items():
                     self.engine.colors[org] = rgb
