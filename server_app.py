@@ -2148,7 +2148,32 @@ if PYQT_AVAILABLE:
             color_group_layout.addWidget(self.color_preset_combo)
             tab2_layout.addWidget(color_group)
 
-            # Группа 5: Параметры соединения с сервером AI Contour 🌐
+            # Группа 5: Лицензирование суб-моделей ИИ 🔑
+            license_group = QGroupBox("Лицензирование суб-моделей ИИ 🔑")
+            license_group_layout = QVBoxLayout(license_group)
+            license_group_layout.setSpacing(10)
+            
+            lbl_license_descr = QLabel(
+                "Некоторые суб-модели (например, структуры головного мозга) требуют активации лицензионных ключей "
+                "TotalSegmentator."
+            )
+            lbl_license_descr.setWordWrap(True)
+            lbl_license_descr.setStyleSheet("color: #888888; font-size: 11px;")
+            
+            self.btn_manage_licenses = QPushButton("🔑 Управление лицензиями")
+            self.btn_manage_licenses.setObjectName("btnAction")
+            self.btn_manage_licenses.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.btn_manage_licenses.clicked.connect(self.show_licenses_dialog)
+            
+            self.lbl_license_status = QLabel("Лицензия: Загрузка...")
+            self.lbl_license_status.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+            
+            license_group_layout.addWidget(lbl_license_descr)
+            license_group_layout.addWidget(self.btn_manage_licenses)
+            license_group_layout.addWidget(self.lbl_license_status)
+            tab2_layout.addWidget(license_group)
+
+            # Группа 6: Параметры соединения с сервером AI Contour 🌐
             conn_group = QGroupBox("Соединение с сервером AI Contour 🌐")
             conn_group_layout = QVBoxLayout(conn_group)
             conn_group_layout.setSpacing(10)
@@ -2679,8 +2704,20 @@ if PYQT_AVAILABLE:
                 self.left_card.setMaximumWidth(max_w)
 
         def update_license_status_label(self):
-            """Обновляет статус лицензии (заглушка на клиенте)."""
-            pass
+            """Обновляет текст статуса количества активных лицензий."""
+            key = getattr(self.engine, "licenses", "").strip() if hasattr(self, "engine") else ""
+            if not hasattr(self, "lbl_license_status"):
+                return
+            if key:
+                # Маскируем ключ для приватности, показывая только начало и конец (например: aca_4HM5...ODB2)
+                masked_key = key
+                if len(key) >= 12:
+                    masked_key = f"{key[:8]}...{key[-4:]}"
+                self.lbl_license_status.setText(f"Лицензия: ✅ Активна ({masked_key})")
+                self.lbl_license_status.setStyleSheet("color: #2ecc71; font-size: 11px; font-weight: bold;")
+            else:
+                self.lbl_license_status.setText("Лицензия: ❌ Отсутствует")
+                self.lbl_license_status.setStyleSheet("color: #e74c3c; font-size: 11px; font-weight: bold;")
 
         def show_licenses_dialog(self):
             """Открывает окно управления лицензиями суб-моделей ИИ."""
