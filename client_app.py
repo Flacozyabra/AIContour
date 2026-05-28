@@ -3783,16 +3783,19 @@ if PYQT_AVAILABLE:
                         group_structures.append((last_header, current_group_items))
                             
                     for header, items in group_structures:
+                        text = header.text()
+                        is_group_collapsed = text.startswith("[+]")
+                        
                         group_visible = False
                         for item in items:
                             if item.data(Qt.ItemDataRole.UserRole + 1) is True:
-                                item.setHidden(False)
+                                item.setHidden(is_group_collapsed)
                                 group_visible = True
                             else:
                                 itm_data = item.data(Qt.ItemDataRole.UserRole)
                                 orig_organ_lower = itm_data.lower() if isinstance(itm_data, str) else ""
                                 if orig_organ_lower in file_supported_organs:
-                                    item.setHidden(False)
+                                    item.setHidden(is_group_collapsed)
                                     group_visible = True
                                 else:
                                     item.setHidden(True)
@@ -4350,6 +4353,7 @@ if PYQT_AVAILABLE:
                 item = self.organs_list.item(i)
                 role = item.data(Qt.ItemDataRole.UserRole)
                 if role == "header":
+                    item.setHidden(False)  # Гарантируем, что сам заголовок виден!
                     text = item.text()
                     current_collapsed = text.startswith("[+]")
                 else:
