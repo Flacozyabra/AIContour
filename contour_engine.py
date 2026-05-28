@@ -57,7 +57,11 @@ DEFAULT_PRESETS_DATA = {
         "Грудная клетка (Thorax)": [
             "heart", "lung_left", "lung_right", "trachea", "esophagus", "aorta", "pulmonary_artery",
             "superior_vena_cava", "sternum", "clavicula_left", "clavicula_right",
-            "scapula_left", "scapula_right", "humerus_left", "humerus_right", "liver"
+            "scapula_left", "scapula_right", "humerus_left", "humerus_right"
+        ],
+        "Брюшная полость (Abdomen)": [
+            "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "pancreas", "duodenum",
+            "adrenal_gland_left", "adrenal_gland_right", "portal_vein_and_splenic_vein", "small_bowel", "colon"
         ],
         "Малый таз (Pelvis)": [
             "urinary_bladder", "prostate", "sacrum", "hip_left", "hip_right", "femur_left", "femur_right",
@@ -507,7 +511,7 @@ class ContourEngine:
         thorax_base = [
             "heart", "lung_left", "lung_right", "trachea", "esophagus", "aorta", "pulmonary_artery",
             "superior_vena_cava", "sternum", "clavicula_left", "clavicula_right",
-            "scapula_left", "scapula_right", "humerus_left", "humerus_right", "liver"
+            "scapula_left", "scapula_right", "humerus_left", "humerus_right"
         ]
         abdomen_base = [
             "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "pancreas", "duodenum",
@@ -575,6 +579,7 @@ class ContourEngine:
         new_presets = {
             "Голова и шея (Head & Neck)": head_neck,
             "Грудная клетка (Thorax)": thorax,
+            "Брюшная полость (Abdomen)": abdomen,
             "Малый таз (Pelvis)": pelvis,
             "Отделы головного мозга (Brain Structures)": brain_structs,
         }
@@ -595,6 +600,7 @@ class ContourEngine:
         mapping = {
             "Голова и шея (Head & Neck)": "head_and_neck",
             "Грудная клетка (Thorax)": "thorax",
+            "Брюшная полость (Abdomen)": "abdomen",
             "Малый таз (Pelvis)": "pelvis",
             "Отделы головного мозга (Brain Structures)": "brain_structures"
         }

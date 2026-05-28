@@ -3142,6 +3142,8 @@ if PYQT_AVAILABLE:
                             matched_preset = "Голова и шея (Head & Neck)"
                         elif any(x in area_lower for x in ["thorax", "chest", "lung", "груд", "легк", "кост", "rib"]):
                             matched_preset = "Грудная клетка (Thorax)"
+                        elif any(x in area_lower for x in ["abdomen", "abdo", "брюш", "печен", "liver", "kidney", "почк", "stomach", "желуд"]):
+                            matched_preset = "Брюшная полость (Abdomen)"
                         elif any(x in area_lower for x in ["pelvis", "prostate", "bladder", "таз", "мочевой", "простат"]):
                             matched_preset = "Малый таз (Pelvis)"
                             

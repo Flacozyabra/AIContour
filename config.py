@@ -94,13 +94,17 @@ ORGAN_GROUPS = {
     "Грудная клетка (Thorax)": [
         "heart", "lung_left", "lung_right", "lungs", "trachea", "esophagus", "aorta", "pulmonary_artery",
         "superior_vena_cava", "sternum", "clavicula_left", "clavicula_right",
-        "scapula_left", "scapula_right", "humerus_left", "humerus_right", "liver"
+        "scapula_left", "scapula_right", "humerus_left", "humerus_right"
+    ],
+    "Брюшная полость (Abdomen)": [
+        "spleen", "kidney_right", "kidney_left", "gallbladder", "liver", "stomach", "pancreas", "duodenum",
+        "adrenal_gland_left", "adrenal_gland_right", "portal_vein_and_splenic_vein", "small_bowel", "colon"
     ],
     "Малый таз (Pelvis)": [
         "urinary_bladder", "prostate", "sacrum", "hip_left", "hip_right", "femur_left", "femur_right",
         "iliac_artery_left", "iliac_artery_right", "iliac_vein_left", "iliac_vein_right",
         "gluteus_maximus_left", "gluteus_maximus_right", "gluteus_medius_left", "gluteus_medius_right",
-        "gluteus_minimus_left", "gluteus_minimus_right", "colon", "small_bowel"
+        "gluteus_minimus_left", "gluteus_minimus_right"
     ],
     "Отделы головного мозга (Brain Structures)": [
         "brain_stem", "cerebellum", "thalamus_left", "thalamus_right", "caudate_left", "caudate_right",

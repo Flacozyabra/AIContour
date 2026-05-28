@@ -1,0 +1,21 @@
+{
+  "name": "Брюшная полость (Abdomen)",
+  "organs": [
+    "adrenal_gland_left",
+    "adrenal_gland_right",
+    "colon",
+    "duodenum",
+    "gallbladder",
+    "inferior_vena_cava",
+    "kidney_cyst_left",
+    "kidney_cyst_right",
+    "kidney_left",
+    "kidney_right",
+    "liver",
+    "pancreas",
+    "portal_vein_and_splenic_vein",
+    "small_bowel",
+    "spleen",
+    "stomach"
+  ]
+}
