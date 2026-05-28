@@ -4292,6 +4292,13 @@ if PYQT_AVAILABLE:
 
             # 3. Сохраняем в presets движка
             self.engine.presets[preset_name] = checked_organs
+            
+            preset_colors_dict = {}
+            for org in checked_organs:
+                if org in self.engine.colors:
+                    preset_colors_dict[org] = self.engine.colors[org]
+            self.engine.preset_colors[preset_name] = preset_colors_dict
+            
             self.engine.save_presets_config()
 
             # 4. Обновляем выпадающий список пресетов и выставляем сохраненный пресет активным
@@ -4405,6 +4412,20 @@ if PYQT_AVAILABLE:
             """Снимает/ставит галочки в списке в соответствии с выбранным пресетом."""
             if preset_name == "Пользовательский (Custom)":
                 return
+
+            # Подтягиваем индивидуальные цвета для пользовательского пресета
+            if preset_name in self.engine.preset_colors:
+                preset_colors = self.engine.preset_colors[preset_name]
+                for org, rgb in preset_colors.items():
+                    self.engine.colors[org] = rgb
+                self.engine.save_presets_config()
+                
+                # Обновляем все иконки цветов в списке self.organs_list
+                for i in range(self.organs_list.count()):
+                    item = self.organs_list.item(i)
+                    organ_name = item.data(Qt.ItemDataRole.UserRole)
+                    if organ_name != "header" and organ_name in preset_colors:
+                        self.update_item_color_icon(item, organ_name)
 
             if preset_name in self.engine.presets:
                 target_organs_raw = self.engine.presets.get(preset_name, [])
@@ -4701,6 +4722,25 @@ if PYQT_AVAILABLE:
             if new_color.isValid():
                 new_rgb = [new_color.red(), new_color.green(), new_color.blue()]
                 self.engine.colors[organ_name] = new_rgb
+                
+                # Запоминаем в текущем пресете, если он пользовательский
+                current_preset = self.preset_combo.currentText().strip()
+                DEFAULT_PRESET_NAMES = [
+                    "Голова и шея (Head & Neck)",
+                    "Грудная клетка (Thorax)",
+                    "Брюшная полость (Abdomen)",
+                    "Малый таз (Pelvis)",
+                    "Отделы головного мозга (Brain Structures)"
+                ]
+                if current_preset not in DEFAULT_PRESET_NAMES and current_preset not in [
+                    "— Выберите пресет —",
+                    "Пользовательский (Custom)",
+                    "Все органы (All)"
+                ] and current_preset:
+                    if current_preset not in self.engine.preset_colors:
+                        self.engine.preset_colors[current_preset] = {}
+                    self.engine.preset_colors[current_preset][organ_name] = new_rgb
+                
                 self.engine.save_presets_config()
                 
                 # Обновляем иконку

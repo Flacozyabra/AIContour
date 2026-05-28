@@ -190,6 +190,7 @@ class ContourEngine:
     def __init__(self, config_path: str = "presets.json") -> None:
         self.config_path = Path(config_path).resolve()
         self.presets: Dict[str, List[str]] = {}
+        self.preset_colors: Dict[str, Dict[str, List[int]]] = {}
         self.colors: Dict[str, List[int]] = {}
         self.ru_names: Dict[str, str] = {}
         self.load_presets_config()
@@ -725,6 +726,7 @@ class ContourEngine:
                 
             # 6. Загрузка пресетов
             self.presets = {}
+            self.preset_colors = {}
             preset_files = list(self.presets_dir.glob("*.json"))
             if preset_files:
                 for p_file in preset_files:
@@ -732,7 +734,10 @@ class ContourEngine:
                         with open(p_file, "r", encoding="utf-8") as f:
                             preset_data = json.load(f)
                             if isinstance(preset_data, dict) and "name" in preset_data and "organs" in preset_data:
-                                self.presets[preset_data["name"]] = preset_data["organs"]
+                                name = preset_data["name"]
+                                self.presets[name] = preset_data["organs"]
+                                if "colors" in preset_data and isinstance(preset_data["colors"], dict):
+                                    self.preset_colors[name] = preset_data["colors"]
                     except Exception as pe:
                         logger.error(f"Ошибка при загрузке пресета {p_file.name}: {pe}")
             
@@ -792,8 +797,16 @@ class ContourEngine:
             for name, organs in self.presets.items():
                 file_name = self._get_preset_filename(name)
                 p_file = self.presets_dir / f"{file_name}.json"
+                
+                preset_payload = {
+                    "name": name,
+                    "organs": organs
+                }
+                if name in self.preset_colors:
+                    preset_payload["colors"] = self.preset_colors[name]
+                    
                 with open(p_file, "w", encoding="utf-8") as f:
-                    json.dump({"name": name, "organs": organs}, f, ensure_ascii=False, indent=2)
+                    json.dump(preset_payload, f, ensure_ascii=False, indent=2)
                     
             logger.info("Конфигурация пресетов успешно сохранена.")
         except Exception as e:
