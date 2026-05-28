@@ -3536,6 +3536,24 @@ if PYQT_AVAILABLE:
                 if hasattr(self, 'btn_deselect_all'):
                     self.btn_deselect_all.setEnabled(True)
                 
+                # Сворачиваем обратно группы по умолчанию ("Остальное" и "Отделы головного мозга")
+                self.collapsed_groups = {"Остальное": True, "Отделы головного мозга (Brain Structures)": True}
+                self.organs_list.blockSignals(True)
+                for i in range(self.organs_list.count()):
+                    item = self.organs_list.item(i)
+                    role = item.data(Qt.ItemDataRole.UserRole)
+                    if role == "header":
+                        text = item.text()
+                        if text.startswith("[+] ") or text.startswith("[-] "):
+                            clean_text = text[4:]
+                        else:
+                            clean_text = text
+                        group_key = clean_text.split(" (")[0]
+                        is_collapsed = self.collapsed_groups.get("Остальное", True) if "ОСТАЛЬНОЕ" in group_key else self.collapsed_groups.get(group_key, False)
+                        prefix = "[+] " if is_collapsed else "[-] "
+                        item.setText(f"{prefix}{clean_text}")
+                self.organs_list.blockSignals(False)
+
                 # Возвращаем видимость всем стандартным органам с учетом свертывания
                 self.restore_group_visibilities()
                 
@@ -3567,6 +3585,9 @@ if PYQT_AVAILABLE:
                 self.btn_select_all.setEnabled(False)
             if hasattr(self, 'btn_deselect_all'):
                 self.btn_deselect_all.setEnabled(False)
+                
+            # Автоматически раскрываем все группы списков органов
+            self.expand_all_groups()
                 
             rtstruct_path = self.rtstruct_combo.currentData()
             if not rtstruct_path or not os.path.exists(rtstruct_path):
@@ -4376,6 +4397,24 @@ if PYQT_AVAILABLE:
                 if next_role == "header":
                     break
                 next_item.setHidden(new_collapsed)
+            self.organs_list.blockSignals(False)
+
+        def expand_all_groups(self):
+            """Разворачивает все группы OAR в списке органов для режима просмотра."""
+            self.organs_list.blockSignals(True)
+            for i in range(self.organs_list.count()):
+                item = self.organs_list.item(i)
+                role = item.data(Qt.ItemDataRole.UserRole)
+                if role == "header":
+                    text = item.text()
+                    if text.startswith("[+] "):
+                        clean_text = text[4:]
+                        item.setText(f"[-] {clean_text}")
+                        group_key = clean_text.split(" (")[0]
+                        if "ОСТАЛЬНОЕ" in group_key:
+                            self.collapsed_groups["Остальное"] = False
+                        else:
+                            self.collapsed_groups[group_key] = False
             self.organs_list.blockSignals(False)
 
         def restore_group_visibilities(self):
