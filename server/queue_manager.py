@@ -15,8 +15,10 @@ import shutil
 import logging
 import threading
 import uuid
+import psutil
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
+
 
 logger = logging.getLogger("QueueManager")
 
@@ -161,7 +163,7 @@ class QueueManager:
             return self.jobs.get(job_id)
 
     def cancel_job(self, job_id: str) -> bool:
-        """Отмена задачи (из очереди или находящейся в процессе выполнения)."""
+        """Отмена задачи (из очереди или находящейся в процессе выполнения) с полной очисткой дерева процессов."""
         with self.lock:
             job = self.jobs.get(job_id)
             if not job:
@@ -182,13 +184,29 @@ class QueueManager:
                 job.status = "CANCELLED"
                 job.current_step = "Отмена... завершение процесса ИИ."
                 job.completed_at = time.time()
-                # Убиваем процесс в ContourEngine
+                
+                # Рекурсивно убиваем дерево процессов
                 if job.active_process:
                     try:
-                        logger.info(f"Отмена: Жесткое прерывание процесса TotalSegmentator для задачи {job_id}")
-                        job.active_process.kill()
+                        logger.info(f"Отмена: Завершение дерева процессов для задачи {job_id} (PID: {job.active_process.pid})")
+                        parent = psutil.Process(job.active_process.pid)
+                        # Рекурсивно собираем всех потомков
+                        children = parent.children(recursive=True)
+                        for child in children:
+                            try:
+                                child.kill()
+                            except psutil.NoSuchProcess:
+                                pass
+                        
+                        # Убиваем родительский процесс
+                        parent.kill()
+                        
+                        # Ждем завершения процессов для предотвращения зомби
+                        psutil.wait_procs(children + [parent], timeout=3)
+                    except psutil.NoSuchProcess:
+                        logger.warning(f"Процесс задачи {job_id} (PID: {job.active_process.pid}) уже завершен.")
                     except Exception as e:
-                        logger.error(f"Не удалось остановить процесс задачи {job_id}: {e}")
+                        logger.error(f"Не удалось остановить дерево процессов для задачи {job_id}: {e}")
                 
                 logger.info(f"Активная задача {job_id} была принудительно отменена.")
                 # Сохраняем исходный DICOM архив для возможности последующего возобновления
@@ -196,6 +214,7 @@ class QueueManager:
                 return True
                 
             return False
+
 
     def pause(self):
         """Пауза обработки очереди."""
