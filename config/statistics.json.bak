@@ -1,0 +1,205 @@
+{
+  "total_runs": 56,
+  "successful_runs": 49,
+  "failed_runs": 7,
+  "cancelled_runs": 0,
+  "total_organs_contoured": 855,
+  "total_elapsed_time_seconds": 3784.82373380661,
+  "organ_stats": {
+    "body": 15,
+    "brain_stem": 33,
+    "cerebellum": 37,
+    "thalamus_left": 33,
+    "thalamus_right": 33,
+    "caudate_left": 33,
+    "caudate_right": 33,
+    "putamen_left": 33,
+    "putamen_right": 33,
+    "pallidum_left": 33,
+    "pallidum_right": 33,
+    "ventricle": 37,
+    "subarachnoid_space": 37,
+    "venous_sinuses": 33,
+    "septum_pellucidum": 33,
+    "internal_capsule": 37,
+    "frontal_lobe": 37,
+    "parietal_lobe": 37,
+    "occipital_lobe": 37,
+    "temporal_lobe": 37,
+    "insular_cortex": 37,
+    "spinal_cord": 12,
+    "urinary_bladder": 12,
+    "prostate": 12,
+    "sacrum": 12,
+    "hip_left": 12,
+    "hip_right": 12,
+    "femur_left": 12,
+    "femur_right": 12,
+    "iliac_artery_left": 12,
+    "iliac_artery_right": 12,
+    "colon": 12,
+    "small_bowel": 12
+  },
+  "recent_runs": [
+    {
+      "timestamp": "2026-05-27 09:12:13",
+      "status": "success",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 13
+    },
+    {
+      "timestamp": "2026-05-27 09:12:11",
+      "status": "success",
+      "preset": "pelvis_oar",
+      "precision": "normal",
+      "elapsed_seconds": 162.4,
+      "organs_count": 13
+    },
+    {
+      "timestamp": "2026-05-27 08:51:17",
+      "status": "failed",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
+    {
+      "timestamp": "2026-05-27 08:45:42",
+      "status": "success",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 13
+    },
+    {
+      "timestamp": "2026-05-27 08:45:41",
+      "status": "success",
+      "preset": "pelvis_oar",
+      "precision": "normal",
+      "elapsed_seconds": 156.6,
+      "organs_count": 13
+    },
+    {
+      "timestamp": "2026-05-27 08:43:05",
+      "status": "success",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 20
+    },
+    {
+      "timestamp": "2026-05-27 08:43:04",
+      "status": "success",
+      "preset": "all",
+      "precision": "normal",
+      "elapsed_seconds": 149.7,
+      "organs_count": 20
+    },
+    {
+      "timestamp": "2026-05-27 08:38:33",
+      "status": "success",
+      "preset": "Отделы головного мозга (Brain Structures)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 9
+    },
+    {
+      "timestamp": "2026-05-27 08:38:31",
+      "status": "success",
+      "preset": "all",
+      "precision": "normal",
+      "elapsed_seconds": 120.5,
+      "organs_count": 9
+    },
+    {
+      "timestamp": "2026-05-27 08:35:15",
+      "status": "success",
+      "preset": "Пользовательский (Custom)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 20
+    },
+    {
+      "timestamp": "2026-05-27 08:35:13",
+      "status": "success",
+      "preset": "all",
+      "precision": "normal",
+      "elapsed_seconds": 147.5,
+      "organs_count": 20
+    },
+    {
+      "timestamp": "2026-05-27 08:31:26",
+      "status": "success",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 13
+    },
+    {
+      "timestamp": "2026-05-27 08:31:24",
+      "status": "success",
+      "preset": "pelvis_oar",
+      "precision": "normal",
+      "elapsed_seconds": 157.4,
+      "organs_count": 13
+    },
+    {
+      "timestamp": "2026-05-27 08:28:48",
+      "status": "failed",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 0
+    },
+    {
+      "timestamp": "2026-05-27 08:28:46",
+      "status": "failed",
+      "preset": "all",
+      "precision": "normal",
+      "elapsed_seconds": 51.8,
+      "organs_count": 0
+    },
+    {
+      "timestamp": "2026-05-27 08:19:55",
+      "status": "success",
+      "preset": "Малый таз (Pelvis)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 13
+    },
+    {
+      "timestamp": "2026-05-27 08:19:54",
+      "status": "success",
+      "preset": "pelvis_oar",
+      "precision": "normal",
+      "elapsed_seconds": 167.6,
+      "organs_count": 13
+    },
+    {
+      "timestamp": "2026-05-27 08:17:06",
+      "status": "success",
+      "preset": "Пользовательский (Custom)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 20
+    },
+    {
+      "timestamp": "2026-05-27 08:17:05",
+      "status": "success",
+      "preset": "all",
+      "precision": "normal",
+      "elapsed_seconds": 152.9,
+      "organs_count": 20
+    },
+    {
+      "timestamp": "2026-05-27 08:06:55",
+      "status": "success",
+      "preset": "Пользовательский (Custom)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 20
+    }
+  ]
+}

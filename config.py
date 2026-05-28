@@ -94,7 +94,7 @@ ORGAN_GROUPS = {
     "Грудная клетка (Thorax)": [
         "heart", "lung_left", "lung_right", "lungs", "trachea", "esophagus", "aorta", "pulmonary_artery",
         "superior_vena_cava", "sternum", "clavicula_left", "clavicula_right",
-        "scapula_left", "scapula_right", "humerus_left", "humerus_right"
+        "scapula_left", "scapula_right", "humerus_left", "humerus_right", "liver"
     ],
     "Малый таз (Pelvis)": [
         "urinary_bladder", "prostate", "sacrum", "hip_left", "hip_right", "femur_left", "femur_right",

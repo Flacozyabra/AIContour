@@ -1678,6 +1678,7 @@ if PYQT_AVAILABLE:
             self.showMaximized()
             self.existing_rtstruct_path = None
             self.is_updating_presets = False
+            self.collapsed_groups = {"Остальное": True}
             self.worker = None
             self.settings = QSettings("AIContourCorp", "AIContour")
 
@@ -1797,6 +1798,7 @@ if PYQT_AVAILABLE:
             self.organs_header.setStyleSheet("font-weight: bold; color: #ffffff;")
             self.organs_list = QListWidget()
             self.organs_list.itemChanged.connect(self.on_organ_item_changed)
+            self.organs_list.itemClicked.connect(self.on_organ_item_clicked)
             self.imported_items = []
 
             tab1_layout.addWidget(self.organs_header)
@@ -2536,7 +2538,9 @@ if PYQT_AVAILABLE:
             placed_organs = set()
 
             for group_title, organs in ORGAN_GROUPS.items():
-                header_item = QListWidgetItem(f"{group_title} ({len(organs)})")
+                is_collapsed = self.collapsed_groups.get(group_title, False)
+                prefix = "[+] " if is_collapsed else "[-] "
+                header_item = QListWidgetItem(f"{prefix}{group_title} ({len(organs)})")
                 header_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
                 header_item.setCheckState(Qt.CheckState.Unchecked)
                 header_item.setData(Qt.ItemDataRole.UserRole, "header")
@@ -2572,6 +2576,9 @@ if PYQT_AVAILABLE:
                     # Установка цветного квадратика-иконки для OAR
                     self.update_item_color_icon(item, org)
                     
+                    if is_collapsed:
+                        item.setHidden(True)
+                    
                     self.organs_list.addItem(item)
             
             # Исключаем дубликаты с похожими названиями, чтобы они не засоряли раздел "Остальное"
@@ -2603,7 +2610,9 @@ if PYQT_AVAILABLE:
             ]
             
             if other_organs:
-                other_header = QListWidgetItem(f"━━━ ОСТАЛЬНОЕ ━━━ ({len(other_organs)})")
+                is_other_collapsed = self.collapsed_groups.get("Остальное", True)
+                prefix = "[+] " if is_other_collapsed else "[-] "
+                other_header = QListWidgetItem(f"{prefix}━━━ ОСТАЛЬНОЕ ━━━ ({len(other_organs)})")
                 other_header.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
                 other_header.setCheckState(Qt.CheckState.Unchecked)
                 other_header.setData(Qt.ItemDataRole.UserRole, "header")
@@ -2633,6 +2642,10 @@ if PYQT_AVAILABLE:
                         
                     item.setData(Qt.ItemDataRole.UserRole, org)
                     self.update_item_color_icon(item, org)
+                    
+                    if is_other_collapsed:
+                        item.setHidden(True)
+                        
                     self.organs_list.addItem(item)
 
             self.is_updating_presets = False
@@ -4293,6 +4306,48 @@ if PYQT_AVAILABLE:
                 QMessageBox.warning(self, "Ошибка выбора", f"Сбой при обработке клика: {e}")
             finally:
                 self.organs_list.blockSignals(False)
+
+        def on_organ_item_clicked(self, item: QListWidgetItem):
+            """Слот для клика по элементу списка органов."""
+            role = item.data(Qt.ItemDataRole.UserRole)
+            if role == "header":
+                self.toggle_group_collapse(item)
+
+        def toggle_group_collapse(self, header_item: QListWidgetItem):
+            """Сворачивает или разворачивает группу органов."""
+            role = header_item.data(Qt.ItemDataRole.UserRole)
+            if role != "header":
+                return
+            
+            text = header_item.text()
+            # Определяем текущее состояние по знаку [+] или [-]
+            is_collapsed = text.startswith("[+]")
+            new_collapsed = not is_collapsed
+            
+            new_prefix = "[+] " if new_collapsed else "[-] "
+            clean_text = text
+            if text.startswith("[+] ") or text.startswith("[-] "):
+                clean_text = text[4:]
+            
+            header_item.setText(f"{new_prefix}{clean_text}")
+            
+            # Сохраняем состояние в self.collapsed_groups
+            group_key = clean_text.split(" (")[0]
+            if "ОСТАЛЬНОЕ" in group_key:
+                self.collapsed_groups["Остальное"] = new_collapsed
+            else:
+                self.collapsed_groups[group_key] = new_collapsed
+            
+            # Скрываем/показываем элементы
+            self.organs_list.blockSignals(True)
+            row = self.organs_list.row(header_item)
+            for i in range(row + 1, self.organs_list.count()):
+                next_item = self.organs_list.item(i)
+                next_role = next_item.data(Qt.ItemDataRole.UserRole)
+                if next_role == "header":
+                    break
+                next_item.setHidden(new_collapsed)
+            self.organs_list.blockSignals(False)
 
         def on_organ_selection_changed(self):
             pass

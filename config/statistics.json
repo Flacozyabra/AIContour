@@ -1,10 +1,10 @@
 {
-  "total_runs": 13,
-  "successful_runs": 3,
+  "total_runs": 15,
+  "successful_runs": 5,
   "failed_runs": 2,
   "cancelled_runs": 8,
-  "total_organs_contoured": 41,
-  "total_elapsed_time_seconds": 874.207775592804,
+  "total_organs_contoured": 81,
+  "total_elapsed_time_seconds": 1055.2175459861755,
   "organ_stats": {
     "body": 3,
     "spinal_cord": 3,
@@ -30,9 +30,45 @@
     "submandibular_gland_left": 2,
     "submandibular_gland_right": 2,
     "auditory_canal_left": 2,
-    "auditory_canal_right": 2
+    "auditory_canal_right": 2,
+    "brain_stem": 2,
+    "cerebellum": 2,
+    "thalamus_left": 2,
+    "thalamus_right": 2,
+    "caudate_left": 2,
+    "caudate_right": 2,
+    "putamen_left": 2,
+    "putamen_right": 2,
+    "pallidum_left": 2,
+    "pallidum_right": 2,
+    "ventricle": 2,
+    "subarachnoid_space": 2,
+    "venous_sinuses": 2,
+    "septum_pellucidum": 2,
+    "internal_capsule": 2,
+    "frontal_lobe": 2,
+    "parietal_lobe": 2,
+    "occipital_lobe": 2,
+    "temporal_lobe": 2,
+    "insular_cortex": 2
   },
   "recent_runs": [
+    {
+      "timestamp": "2026-05-27 22:07:04",
+      "status": "success",
+      "preset": "Пользовательский (Custom)",
+      "precision": "Стандартная (1.5 мм)",
+      "elapsed_seconds": 0.0,
+      "organs_count": 20
+    },
+    {
+      "timestamp": "2026-05-27 22:07:02",
+      "status": "success",
+      "preset": "all",
+      "precision": "normal",
+      "elapsed_seconds": 181.0,
+      "organs_count": 20
+    },
     {
       "timestamp": "2026-05-27 19:02:41",
       "status": "cancelled",
