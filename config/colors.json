@@ -2178,5 +2178,25 @@
     255,
     32,
     32
+  ],
+  "hippocampus_left": [
+    201,
+    149,
+    50
+  ],
+  "hippocampus_right": [
+    193,
+    198,
+    233
+  ],
+  "amygdala_left": [
+    120,
+    190,
+    76
+  ],
+  "amygdala_right": [
+    200,
+    214,
+    59
   ]
 }

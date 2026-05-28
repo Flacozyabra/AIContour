@@ -428,5 +428,9 @@
   "putamen_left": "Левая скорлупа мозга (Putamen L)",
   "putamen_right": "Правая скорлупа мозга (Putamen R)",
   "pallidum_left": "Левый бледный шар (Pallidum L)",
-  "pallidum_right": "Правый бледный шар (Pallidum R)"
+  "pallidum_right": "Правый бледный шар (Pallidum R)",
+  "hippocampus_left": "Левый гиппокамп (Hippocampus L)",
+  "hippocampus_right": "Правый гиппокамп (Hippocampus R)",
+  "amygdala_left": "Левое миндалевидное тело (Amygdala L)",
+  "amygdala_right": "Правое миндалевидное тело (Amygdala R)"
 }

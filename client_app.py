@@ -1697,7 +1697,7 @@ if PYQT_AVAILABLE:
             self.showMaximized()
             self.existing_rtstruct_path = None
             self.is_updating_presets = False
-            self.collapsed_groups = {"Остальное": True, "Отделы головного мозга": True}
+            self.collapsed_groups = {"Остальное": True, "Отделы головного мозга (Brain Structures)": True}
             self.worker = None
             self.settings = QSettings("AIContourCorp", "AIContour")
 
