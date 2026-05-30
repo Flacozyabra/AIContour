@@ -2543,7 +2543,7 @@ if PYQT_AVAILABLE:
                     
                     # 3. Полностью инициализируем пресеты и органы в GUI
                     self.init_presets_and_organs()
-                    self.update_status_display()
+                    self.update_license_status_label()
                     
                     # 4. Восстанавливаем галочки
                     self.organs_list.blockSignals(True)
