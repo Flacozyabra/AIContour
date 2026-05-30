@@ -1514,28 +1514,34 @@ if PYQT_AVAILABLE:
             elekta_settings_layout.setContentsMargins(10, 5, 5, 5)
             elekta_settings_layout.setSpacing(6)
             
-            lbl_local_desc = QLabel("Local: AET")
+            lbl_local_desc = QLabel("Local:")
             lbl_local_desc.setStyleSheet("color: #a0a0a0; font-weight: bold;")
+            
+            lbl_local_aet_lbl = QLabel("AET")
+            lbl_local_aet_lbl.setStyleSheet("color: #a0a0a0;")
             
             self.elekta_local_aet_edit = QLineEdit("AIC_SCP")
             self.elekta_local_aet_edit.setPlaceholderText("AIC_SCP")
             self.elekta_local_aet_edit.setFixedWidth(100)
             
-            lbl_local_port_desc = QLabel("Port:")
+            lbl_local_port_desc = QLabel("Port")
             lbl_local_port_desc.setStyleSheet("color: #a0a0a0;")
             
             self.elekta_local_port_edit = QLineEdit("10404")
             self.elekta_local_port_edit.setPlaceholderText("10404")
             self.elekta_local_port_edit.setFixedWidth(70)
             
-            lbl_monaco_desc = QLabel("Remote: AET")
+            lbl_monaco_desc = QLabel("Remote:")
             lbl_monaco_desc.setStyleSheet("color: #a0a0a0; font-weight: bold;")
+            
+            lbl_monaco_aet_lbl = QLabel("AET")
+            lbl_monaco_aet_lbl.setStyleSheet("color: #a0a0a0;")
             
             self.elekta_monaco_aet_edit = QLineEdit("MONACO")
             self.elekta_monaco_aet_edit.setPlaceholderText("MONACO")
             self.elekta_monaco_aet_edit.setFixedWidth(100)
             
-            lbl_monaco_port_desc = QLabel("Port:")
+            lbl_monaco_port_desc = QLabel("Port")
             lbl_monaco_port_desc.setStyleSheet("color: #a0a0a0;")
             
             self.elekta_monaco_port_edit = QLineEdit("104")
@@ -1543,24 +1549,26 @@ if PYQT_AVAILABLE:
             self.elekta_monaco_port_edit.setFixedWidth(70)
             
             # Размещаем в сетку
-            # Строка 0: Приемник
+            # Строка 0: Приемник (Local)
             elekta_settings_layout.addWidget(lbl_local_desc, 0, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             
             hbox_local = QHBoxLayout()
             hbox_local.setContentsMargins(0, 0, 0, 0)
             hbox_local.setSpacing(6)
+            hbox_local.addWidget(lbl_local_aet_lbl)
             hbox_local.addWidget(self.elekta_local_aet_edit)
             hbox_local.addWidget(lbl_local_port_desc)
             hbox_local.addWidget(self.elekta_local_port_edit)
             hbox_local.addStretch()
             elekta_settings_layout.addLayout(hbox_local, 0, 1)
             
-            # Строка 1: Monaco
+            # Строка 1: Monaco (Remote)
             elekta_settings_layout.addWidget(lbl_monaco_desc, 1, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             
             hbox_monaco = QHBoxLayout()
             hbox_monaco.setContentsMargins(0, 0, 0, 0)
             hbox_monaco.setSpacing(6)
+            hbox_monaco.addWidget(lbl_monaco_aet_lbl)
             hbox_monaco.addWidget(self.elekta_monaco_aet_edit)
             hbox_monaco.addWidget(lbl_monaco_port_desc)
             hbox_monaco.addWidget(self.elekta_monaco_port_edit)
