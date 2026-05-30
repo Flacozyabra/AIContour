@@ -2533,21 +2533,30 @@ if PYQT_AVAILABLE:
                 self.elekta_monaco_port_edit.blockSignals(True)
                 self.elekta_mode_check.blockSignals(True)
                 
+                elekta_mode_enabled = False
                 try:
-                    elekta_local_aet = self.settings.value("elekta_local_aet", "AIC_SCP")
+                    elekta_local_aet = str(self.settings.value("elekta_local_aet", "AIC_SCP"))
                     self.elekta_local_aet_edit.setText(elekta_local_aet)
                     
-                    elekta_local_port = self.settings.value("elekta_local_port", "10404")
+                    elekta_local_port = str(self.settings.value("elekta_local_port", "10404"))
                     self.elekta_local_port_edit.setText(elekta_local_port)
                     
-                    elekta_monaco_aet = self.settings.value("elekta_monaco_aet", "MONACO")
+                    elekta_monaco_aet = str(self.settings.value("elekta_monaco_aet", "MONACO"))
                     self.elekta_monaco_aet_edit.setText(elekta_monaco_aet)
                     
-                    elekta_monaco_port = self.settings.value("elekta_monaco_port", "104")
+                    elekta_monaco_port = str(self.settings.value("elekta_monaco_port", "104"))
                     self.elekta_monaco_port_edit.setText(elekta_monaco_port)
                     
-                    elekta_mode_enabled = self.settings.value("elekta_mode_enabled", False, type=bool)
+                    # Безопасное чтение булевого значения
+                    val = self.settings.value("elekta_mode_enabled", False)
+                    if isinstance(val, str):
+                        elekta_mode_enabled = val.lower() in ("true", "1")
+                    else:
+                        elekta_mode_enabled = bool(val)
+                        
                     self.elekta_mode_check.setChecked(elekta_mode_enabled)
+                except Exception as elekta_err:
+                    logger.error(f"Ошибка при безопасном чтении настроек Elekta mod: {elekta_err}", exc_info=True)
                 finally:
                     self.elekta_local_aet_edit.blockSignals(False)
                     self.elekta_local_port_edit.blockSignals(False)
