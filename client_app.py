@@ -1522,7 +1522,7 @@ if PYQT_AVAILABLE:
             
             self.elekta_local_aet_edit = QLineEdit("AIC_SCP")
             self.elekta_local_aet_edit.setPlaceholderText("AIC_SCP")
-            self.elekta_local_aet_edit.setFixedWidth(100)
+            self.elekta_local_aet_edit.setFixedWidth(200)
             
             lbl_local_port_desc = QLabel("Port")
             lbl_local_port_desc.setStyleSheet("color: #a0a0a0;")
@@ -1539,7 +1539,7 @@ if PYQT_AVAILABLE:
             
             self.elekta_monaco_aet_edit = QLineEdit("MONACO")
             self.elekta_monaco_aet_edit.setPlaceholderText("MONACO")
-            self.elekta_monaco_aet_edit.setFixedWidth(100)
+            self.elekta_monaco_aet_edit.setFixedWidth(200)
             
             lbl_monaco_port_desc = QLabel("Port")
             lbl_monaco_port_desc.setStyleSheet("color: #a0a0a0;")
