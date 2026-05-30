@@ -212,6 +212,9 @@ class ElektaManager:
 
         Path(self.output_dir).mkdir(parents=True, exist_ok=True)
 
+        # Автоматическая очистка исследований старше 1 дня перед запуском
+        self.cleanup_old_studies(days=1.0)
+
         self.receiver = DicomReceiver(port=port, ae_title=ae_title, output_dir=self.output_dir)
         
         self.receiver.file_received.connect(self._log)
@@ -289,3 +292,41 @@ class ElektaManager:
 
         self.sender_thread.start()
         return True
+
+    def cleanup_old_studies(self, days: float = 1.0) -> None:
+        """
+        Удаляет старые папки исследований из output_dir, которые старше указанного количества дней.
+        """
+        import time
+        import shutil
+
+        if not os.path.exists(self.output_dir):
+            return
+
+        now = time.time()
+        cutoff = now - (days * 24 * 3600)
+        deleted_count = 0
+
+        try:
+            for entry in os.scandir(self.output_dir):
+                if entry.is_dir():
+                    # Проверяем mtime самой директории
+                    dir_mtime = entry.stat().st_mtime
+                    
+                    # Проверяем mtime файлов внутри на случай, если папка старая, но файлы свежие
+                    try:
+                        for subentry in os.scandir(entry.path):
+                            if subentry.is_file():
+                                dir_mtime = max(dir_mtime, subentry.stat().st_mtime)
+                    except Exception:
+                        pass
+
+                    if dir_mtime < cutoff:
+                        logger.info(f"Удаление старого исследования: {entry.path} (возраст: {(now - dir_mtime) / 3600:.1f} ч)")
+                        shutil.rmtree(entry.path, ignore_errors=True)
+                        deleted_count += 1
+
+            if deleted_count > 0:
+                self._log(f"Автоочистка DICOM: удалено {deleted_count} исследований старше {days} дн.")
+        except Exception as e:
+            logger.error(f"Ошибка при очистке старых исследований в {self.output_dir}: {e}", exc_info=True)
