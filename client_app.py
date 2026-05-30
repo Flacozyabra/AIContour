@@ -1501,6 +1501,13 @@ if PYQT_AVAILABLE:
             input_box.addWidget(self.input_edit)
             input_box.addWidget(self.btn_input)
             input_group_layout.addLayout(input_box)
+            
+            # Чекбокс Elekta mod
+            self.elekta_mode_check = QCheckBox("Режим Elekta mod (DICOM-приемник)")
+            self.elekta_mode_check.setStyleSheet("font-weight: bold; color: #00ffd0; margin-top: 5px;")
+            self.elekta_mode_check.stateChanged.connect(self.on_elekta_mode_changed)
+            input_group_layout.addWidget(self.elekta_mode_check)
+            
             tab2_layout.addWidget(input_group)
             
             # Группа: Действия с файлами структур (перенесено из Tab 1)
@@ -2738,6 +2745,10 @@ if PYQT_AVAILABLE:
                 self.series_table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
                 
                 # Восстанавливаем выделение
+                if hasattr(self, '_auto_select_study_path') and self._auto_select_study_path:
+                    selected_study_path = self._auto_select_study_path
+                    self._auto_select_study_path = None
+
                 if selected_study_path:
                     target_row = -1
                     for r in range(self.series_table.rowCount()):
@@ -4548,6 +4559,57 @@ if PYQT_AVAILABLE:
             enabled = (state == 2)
             self.smoothing_combo.setEnabled(enabled)
 
+        def on_elekta_mode_changed(self, state: int):
+            """Слот изменения состояния чекбокса Elekta mod."""
+            enabled = (state == 2)
+            if enabled:
+                # Запоминаем текущую папку
+                self._saved_user_dir = self.input_edit.text().strip()
+                
+                # Блокируем выбор папки
+                self.input_edit.setEnabled(False)
+                self.btn_input.setEnabled(False)
+                
+                # Устанавливаем в "DICOM"
+                self.input_edit.setText("DICOM")
+                
+                # Инициализируем менеджер, если ещё не создан
+                if not hasattr(self, 'elekta_manager'):
+                    from elekta_mod import ElektaManager
+                    self.elekta_manager = ElektaManager(
+                        output_dir="DICOM",
+                        log_callback=lambda msg: self.append_log(msg, "#00ffd0")
+                    )
+                
+                # Запускаем SCP-сервер
+                self.elekta_manager.start_receiver(
+                    port=11112,
+                    ae_title="AICONTOUR_SCP",
+                    study_received_callback=self.on_elekta_study_received
+                )
+            else:
+                # Разблокируем
+                self.input_edit.setEnabled(True)
+                self.btn_input.setEnabled(True)
+                
+                # Восстанавливаем сохраненную папку
+                if hasattr(self, '_saved_user_dir') and self._saved_user_dir:
+                    self.input_edit.setText(self._saved_user_dir)
+                
+                # Останавливаем приемник
+                if hasattr(self, 'elekta_manager'):
+                    self.elekta_manager.stop_receiver()
+
+        def on_elekta_study_received(self, study_dir: str, patient_id: str):
+            """Вызывается, когда исследование успешно принято по DICOM."""
+            self.append_log(f"Серия КТ успешно принята от Monaco и сохранена в: {study_dir} ✅", "#00ffd0")
+            
+            # Запускаем сканирование
+            self.start_dicom_scan("DICOM", is_manual=False)
+            
+            # Сохраняем путь для автовыбора
+            self._auto_select_study_path = study_dir
+
         def append_log(self, message: str, color: str):
             """Потокобезопасное добавление логов в текстовое окно."""
             if not hasattr(self, 'log_edit'):
@@ -5148,6 +5210,24 @@ if PYQT_AVAILABLE:
 
                     final_log = f"[INFO]: Задача пациента {patient_name} успешно завершена! Добавлено структур: {count}. Время работы: {time_str} сек."
                     self.append_log(final_log, "#2ecc71")
+
+                    # Автоматическая фоновая отправка результатов на Monaco в режиме Elekta mod
+                    if getattr(self, 'elekta_mode_check', None) and self.elekta_mode_check.isChecked():
+                        if hasattr(self, 'elekta_manager') and self.elekta_manager.last_monaco_ip:
+                            self.append_log(f"[Elekta]: Запуск фонового экспорта снимков и RTSTRUCT для {patient_name} на Monaco ({self.elekta_manager.last_monaco_ip})...", "#00ffd0")
+                            
+                            def on_elekta_export_finished(send_success, send_msg):
+                                if send_success:
+                                    self.append_log(f"[Elekta]: {send_msg}", "#2ecc71")
+                                else:
+                                    self.append_log(f"[Elekta ERROR]: {send_msg}", "#ff6b6b")
+                                    
+                            self.elekta_manager.send_back_to_monaco(
+                                study_dir=dicom_dir,
+                                finished_callback=on_elekta_export_finished
+                            )
+                        else:
+                            self.append_log("[Elekta WARNING]: Невозможно запустить экспорт. Сохраненный IP Monaco отсутствует.", "#ff6b6b")
                     
                     QMessageBox.information(self, "Успех", f"Автоматическое оконтурирование для пациента {patient_name} завершено успешно!")
                 else:
@@ -5678,6 +5758,10 @@ if PYQT_AVAILABLE:
                 QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.Yes:
+                # Гарантированно останавливаем приемник Elekta mod при выходе
+                if hasattr(self, 'elekta_manager'):
+                    self.elekta_manager.stop_receiver()
+
                 if hasattr(self, 'active_workers'):
                     for w in list(self.active_workers):
                         if w.isRunning():
