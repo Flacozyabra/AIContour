@@ -2635,6 +2635,7 @@ if PYQT_AVAILABLE:
                     if organ_name not in checked_organs:
                         checked_organs.append(organ_name)
             self.settings.setValue("checked_organs", checked_organs)
+            self.settings.sync()
 
         def sync_config_from_server(self) -> bool:
             """Синхронизирует всю конфигурацию пресетов, цветов и лицензий с сервера FastAPI."""
@@ -5898,6 +5899,9 @@ if PYQT_AVAILABLE:
                 QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.Yes:
+                # Принудительно сохраняем настройки перед выходом
+                self.save_settings()
+
                 # Гарантированно останавливаем приемник Elekta mod при выходе
                 if hasattr(self, 'elekta_manager'):
                     self.elekta_manager.stop_receiver()
