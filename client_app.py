@@ -1399,7 +1399,7 @@ if PYQT_AVAILABLE:
             # --- ЛЕВАЯ КОЛОНКА (Вкладки настроек) ---
             self.left_card = QFrame()
             self.left_card.setObjectName("card")
-            self.left_card.setMinimumWidth(420)
+            self.left_card.setMinimumWidth(490)
             left_layout = QVBoxLayout(self.left_card)
             left_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -2116,7 +2116,7 @@ if PYQT_AVAILABLE:
             self.smoothing_combo.currentIndexChanged.connect(self.save_settings)
             self.color_preset_combo.currentIndexChanged.connect(self.save_settings)
             
-            self.splitter.setSizes([430, 490])
+            self.splitter.setSizes([490, 430])
 
             # Скрываем статус-бар, так как индикатор перенесен во вкладки
             self.statusBar().setVisible(False)
@@ -2125,7 +2125,7 @@ if PYQT_AVAILABLE:
             """Динамическое ограничение максимальной ширины левой панели до 50% ширины окна."""
             super().resizeEvent(event)
             if hasattr(self, 'left_card'):
-                max_w = max(420, int(self.width() * 0.5))
+                max_w = max(490, int(self.width() * 0.5))
                 self.left_card.setMaximumWidth(max_w)
 
         def update_license_status_label(self):
@@ -3065,9 +3065,9 @@ if PYQT_AVAILABLE:
                 # Возвращаем левую панель и сплиттеры к стандартным размерам, только если не был включен режим просмотра
                 if not was_checked:
                     if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                        self.left_card.setMinimumWidth(400)
-                        self.left_card.setMaximumWidth(480)
-                        self.splitter.setSizes([430, 490])
+                        self.left_card.setMinimumWidth(490)
+                        self.left_card.setMaximumWidth(max(490, int(self.width() * 0.5)))
+                        self.splitter.setSizes([490, 430])
                     if hasattr(self, 'main_splitter'):
                         self.main_splitter.setSizes([600, 400])
                     if hasattr(self, 'v_splitter'):
@@ -3140,9 +3140,9 @@ if PYQT_AVAILABLE:
                     self.chk_show_structures.blockSignals(False)
                     
                     if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                        self.left_card.setMinimumWidth(400)
-                        self.left_card.setMaximumWidth(480)
-                        self.splitter.setSizes([430, 490])
+                        self.left_card.setMinimumWidth(490)
+                        self.left_card.setMaximumWidth(max(490, int(self.width() * 0.5)))
+                        self.splitter.setSizes([490, 430])
                     if hasattr(self, 'main_splitter'):
                         self.main_splitter.setSizes([600, 400])
                     if hasattr(self, 'v_splitter'):
@@ -3245,9 +3245,9 @@ if PYQT_AVAILABLE:
                 
                 # Увеличиваем вьюер за счет сжатия таблицы КТ и логов (левая панель со структурами сохраняет стандартный размер!)
                 if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                    self.left_card.setMinimumWidth(400)
-                    self.left_card.setMaximumWidth(480)
-                    self.splitter.setSizes([430, 490])
+                    self.left_card.setMinimumWidth(490)
+                    self.left_card.setMaximumWidth(max(490, int(self.width() * 0.5)))
+                    self.splitter.setSizes([490, 430])
                 if hasattr(self, 'main_splitter'):
                     self.main_splitter.setSizes([150, 850])
                 if hasattr(self, 'v_splitter'):
@@ -3321,9 +3321,9 @@ if PYQT_AVAILABLE:
                 
                 # Возвращаем левую панель и сплиттеры к стандартным размерам
                 if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                    self.left_card.setMinimumWidth(400)
-                    self.left_card.setMaximumWidth(480)
-                    self.splitter.setSizes([430, 490])
+                    self.left_card.setMinimumWidth(490)
+                    self.left_card.setMaximumWidth(max(490, int(self.width() * 0.5)))
+                    self.splitter.setSizes([490, 430])
                 if hasattr(self, 'main_splitter'):
                     self.main_splitter.setSizes([600, 400])
                 if hasattr(self, 'v_splitter'):
@@ -3363,9 +3363,9 @@ if PYQT_AVAILABLE:
                 
                 # Возвращаем левую панель и сплиттеры к стандартным размерам при отсутствии файла
                 if hasattr(self, 'left_card') and hasattr(self, 'splitter'):
-                    self.left_card.setMinimumWidth(400)
-                    self.left_card.setMaximumWidth(480)
-                    self.splitter.setSizes([430, 490])
+                    self.left_card.setMinimumWidth(490)
+                    self.left_card.setMaximumWidth(max(490, int(self.width() * 0.5)))
+                    self.splitter.setSizes([490, 430])
                 if hasattr(self, 'main_splitter'):
                     self.main_splitter.setSizes([600, 400])
                 if hasattr(self, 'v_splitter'):
