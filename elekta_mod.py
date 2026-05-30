@@ -3,7 +3,7 @@
 
 """
 ================================================================================
-Модуль elekta_mod.py: Реализация режима 'Elekta mod' (DICOM SCP/SCU интеграция)
+Модуль elekta_mod.py: Реализация неблокирующего режима 'Elekta mod'
 ================================================================================
 """
 
@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Callable
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from pydicom import dcmread
 from pynetdicom import AE, evt, StoragePresentationContexts
 
@@ -21,7 +21,6 @@ from pynetdicom import AE, evt, StoragePresentationContexts
 logger = logging.getLogger("ElektaMod")
 logger.setLevel(logging.INFO)
 
-# Убедимся, что у логгера есть обработчик, если он не настроен глобально
 if not logger.handlers:
     ch = logging.StreamHandler()
     formatter = logging.Formatter('[%(asctime)s] %(levelname)s [%(name)s]: %(message)s')
@@ -29,15 +28,16 @@ if not logger.handlers:
     logger.addHandler(ch)
 
 
-class DicomReceiverThread(QThread):
+class DicomReceiver(QObject):
     """
-    Фоновый поток для запуска DICOM C-STORE SCP сервера (приемник КТ-исследований).
+    Неблокирующий DICOM C-STORE SCP сервер приема (на базе QObject с block=False).
+    Позволяет мгновенно запускать и безопасно останавливать сервер, исключая зависания GUI.
     """
     study_received = pyqtSignal(str, str)  # Сигнал (путь_к_папке, patient_id)
     file_received = pyqtSignal(str)        # Сигнал прогресса для логов
     error_occurred = pyqtSignal(str)       # Сигнал об ошибке
 
-    def __init__(self, port: int = 11112, ae_title: str = "AICONTOUR_SCP", output_dir: str = "DICOM") -> None:
+    def __init__(self, port: int = 10404, ae_title: str = "AIC_SCP", output_dir: str = "DICOM") -> None:
         super().__init__()
         self.port = port
         self.ae_title = ae_title
@@ -47,37 +47,32 @@ class DicomReceiverThread(QThread):
         self.received_files: List[str] = []
         self.current_patient_id: Optional[str] = None
         self.current_study_dir: Optional[str] = None
-        self._is_running = False
 
-    def run(self) -> None:
-        self._is_running = True
+    def start(self) -> bool:
+        """Запускает DICOM C-STORE SCP сервер в неблокирующем фоновом потоке pynetdicom."""
+        self.stop()
         self.received_files = []
         self.current_patient_id = None
         self.current_study_dir = None
         
         ae = AE(ae_title=self.ae_title.encode('utf-8'))
-        # Поддерживаем все стандартные Storage SOP классы
         ae.supported_contexts = StoragePresentationContexts
 
         def handle_store(event) -> int:
             try:
-                # Извлекаем IP-адрес отправителя (станция Monaco)
+                # Извлекаем IP-адрес отправителя
                 self.last_sender_ip = event.assoc.requestor.address
                 
                 ds = event.dataset
-                # Предотвращаем падение при отсутствии атрибутов
                 patient_id = str(getattr(ds, 'PatientID', 'UNKNOWN')).strip()
                 patient_name = str(getattr(ds, 'PatientName', 'UNKNOWN')).replace('^', ' ').strip()
                 study_date = str(getattr(ds, 'StudyDate', 'NODATE')).strip()
                 
-                # Формируем имя папки для сохранения исследования
                 dir_name = f"{patient_name}_{study_date}"
-                # Очищаем от спецсимволов для безопасности файловой системы
                 dir_name = re.sub(r'[^a-zA-Z0-9\s_\-]', '', dir_name).strip()
                 if not dir_name:
                     dir_name = "UnknownStudy"
 
-                # Создаем папку в директории DICOM
                 study_path = Path(self.output_dir) / dir_name
                 study_path.mkdir(parents=True, exist_ok=True)
                 
@@ -87,7 +82,7 @@ class DicomReceiverThread(QThread):
                 sop_instance_uid = getattr(ds, 'SOPInstanceUID', 'file')
                 file_path = study_path / f"{sop_instance_uid}.dcm"
 
-                # Сохраняем DICOM-файл на диск
+                # Сохраняем файл на диск
                 ds.save_as(str(file_path), write_like_original=False)
                 
                 self.received_files.append(str(file_path))
@@ -99,7 +94,6 @@ class DicomReceiverThread(QThread):
                 return 0xC000  # Cannot Understand
 
         def handle_release(event) -> None:
-            # Когда Monaco завершает отправку серии и закрывает соединение
             if self.current_study_dir and self.received_files:
                 logger.info(f"Ассоциация закрыта. Передача серии {self.current_study_dir} окончена. Файлов: {len(self.received_files)}.")
                 self.study_received.emit(self.current_study_dir, self.current_patient_id or "")
@@ -111,24 +105,25 @@ class DicomReceiverThread(QThread):
         ]
 
         try:
-            logger.info(f"Запуск C-STORE SCP сервера на порту {self.port} (AET: {self.ae_title})...")
-            # Запускаем блокирующий сервер в этом отдельном потоке
-            self.server = ae.start_server(('', self.port), block=True, evt_handlers=handlers)
+            logger.info(f"Запуск неблокирующего C-STORE SCP сервера на порту {self.port} (AET: {self.ae_title})...")
+            # block=False запускает сервер во внутреннем неблокирующем потоке pynetdicom
+            self.server = ae.start_server(('', self.port), block=False, evt_handlers=handlers)
+            return True
         except Exception as e:
             error_msg = f"Не удалось запустить DICOM C-STORE SCP сервер: {e}"
             logger.error(error_msg)
             self.error_occurred.emit(error_msg)
-        finally:
-            self._is_running = False
+            return False
 
     def stop(self) -> None:
-        """Безопасно останавливает сервер."""
+        """Останавливает сервер мгновенно и безопасно."""
         if self.server:
-            logger.info("Остановка C-STORE SCP сервера...")
-            self.server.shutdown()
+            logger.info("Остановка неблокирующего C-STORE SCP сервера...")
+            try:
+                self.server.shutdown()
+            except Exception as e:
+                logger.error(f"Ошибка при выключении DICOM сервера: {e}")
             self.server = None
-        self.quit()
-        self.wait()
 
 
 class DicomSenderThread(QThread):
@@ -153,7 +148,6 @@ class DicomSenderThread(QThread):
             return
 
         ae = AE(ae_title=self.local_ae_title.encode('utf-8'))
-        # Используем презентационные контексты для отправки
         ae.requested_contexts = StoragePresentationContexts
 
         logger.info(f"Установка DICOM-ассоциации с Monaco ({self.ip}:{self.port}, AET: {self.ae_title})...")
@@ -173,7 +167,6 @@ class DicomSenderThread(QThread):
                     
                     self.progress_signal.emit(idx + 1, total_files, filename)
                     
-                    # Отправляем файл методом C-STORE
                     status = assoc.send_c_store(ds)
                     
                     if status and getattr(status, 'Status', None) == 0x0000:
@@ -200,12 +193,10 @@ class ElektaManager:
     def __init__(self, output_dir: str = "DICOM", log_callback: Optional[Callable[[str], None]] = None) -> None:
         self.output_dir = output_dir
         self.log_callback = log_callback
-        self.receiver_thread: Optional[DicomReceiverThread] = None
+        self.receiver: Optional[DicomReceiver] = None
         self.sender_thread: Optional[DicomSenderThread] = None
         
-        # Сохраненное состояние последнего отправителя (станция Monaco)
         self.last_monaco_ip: Optional[str] = None
-        # По умолчанию Monaco C-STORE SCP обычно слушает на порту 104
         self.monaco_port: int = 104
         self.monaco_aet: str = "MONACO"
 
@@ -214,57 +205,48 @@ class ElektaManager:
         if self.log_callback:
             self.log_callback(text)
 
-    def start_receiver(self, port: int = 11112, ae_title: str = "AICONTOUR_SCP", 
+    def start_receiver(self, port: int = 10404, ae_title: str = "AIC_SCP", 
                        study_received_callback: Optional[Callable[[str, str], None]] = None) -> bool:
-        """
-        Запускает фоновый сервер приема DICOM файлов.
-        """
+        """Запускает неблокирующий приемник DICOM на указанном порту."""
         self.stop_receiver()
 
-        # Создаем папку DICOM, если её нет
         Path(self.output_dir).mkdir(parents=True, exist_ok=True)
 
-        self.receiver_thread = DicomReceiverThread(port=port, ae_title=ae_title, output_dir=self.output_dir)
+        self.receiver = DicomReceiver(port=port, ae_title=ae_title, output_dir=self.output_dir)
         
-        # Связываем сигналы
-        self.receiver_thread.file_received.connect(self._log)
-        self.receiver_thread.error_occurred.connect(self._log)
+        self.receiver.file_received.connect(self._log)
+        self.receiver.error_occurred.connect(self._log)
         
         if study_received_callback:
             def on_study_received(path, patient_id):
-                # Сохраняем IP отправителя перед вызовом коллбека
-                if self.receiver_thread:
-                    self.last_monaco_ip = self.receiver_thread.last_sender_ip
+                if self.receiver:
+                    self.last_monaco_ip = self.receiver.last_sender_ip
                     self._log(f"Запомнен IP-адрес станции Monaco: {self.last_monaco_ip}")
                 study_received_callback(path, patient_id)
-            
-            self.receiver_thread.study_received.connect(on_study_received)
+            self.receiver.study_received.connect(on_study_received)
         else:
             def save_ip_only(path, patient_id):
-                if self.receiver_thread:
-                    self.last_monaco_ip = self.receiver_thread.last_sender_ip
-            self.receiver_thread.study_received.connect(save_ip_only)
+                if self.receiver:
+                    self.last_monaco_ip = self.receiver.last_sender_ip
+            self.receiver.study_received.connect(save_ip_only)
 
-        self.receiver_thread.start()
-        self._log(f"Режим Elekta: запущен приемник DICOM на порту {port} (AET: {ae_title}). Ожидание данных...")
-        return True
+        success = self.receiver.start()
+        if success:
+            self._log(f"Режим Elekta: запущен приемник DICOM на порту {port} (AET: {ae_title}). Ожидание данных...")
+        return success
 
     def stop_receiver(self) -> None:
-        """
-        Останавливает сервер приема.
-        """
-        if self.receiver_thread:
+        """Останавливает приемник DICOM мгновенно."""
+        if self.receiver:
             self._log("Режим Elekta: остановка приемника DICOM...")
-            self.receiver_thread.stop()
-            self.receiver_thread = None
+            self.receiver.stop()
+            self.receiver = None
 
     def send_back_to_monaco(self, study_dir: str, progress_callback: Optional[Callable[[int, int, str], None]] = None,
                             finished_callback: Optional[Callable[[bool, str], None]] = None) -> bool:
-        """
-        Запускает фоновую отправку всех файлов исследования и результатов RTSTRUCT обратно на Monaco.
-        """
+        """Запускает фоновую отправку всех файлов исследования и RTSTRUCT обратно на Monaco."""
         if not self.last_monaco_ip:
-            self._log("Ошибка: нет сохраненного IP-адреса станции Monaco для отправки.")
+            self._log("Ошибка: нет сохраненного IP-адреса Monaco для отправки.")
             if finished_callback:
                 finished_callback(False, "Отсутствует сохраненный IP-адрес Monaco (исследование не принималось по сети).")
             return False
@@ -275,7 +257,6 @@ class ElektaManager:
                 finished_callback(False, f"Папка исследования не существует: {study_dir}")
             return False
 
-        # Собираем все DICOM файлы из папки
         files_to_send = []
         for root, _, files in os.walk(study_dir):
             for file in files:
@@ -283,7 +264,7 @@ class ElektaManager:
                     files_to_send.append(os.path.join(root, file))
 
         if not files_to_send:
-            self._log(f"Ошибка: в папке {study_dir} не найдено DICOM-файлов для отправки.")
+            self._log(f"Ошибка: в папке {study_dir} не найдено DICOM-файлов.")
             if finished_callback:
                 finished_callback(False, "В папке исследования не обнаружено DICOM файлов.")
             return False

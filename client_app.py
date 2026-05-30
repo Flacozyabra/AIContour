@@ -1508,6 +1508,41 @@ if PYQT_AVAILABLE:
             self.elekta_mode_check.stateChanged.connect(self.on_elekta_mode_changed)
             input_group_layout.addWidget(self.elekta_mode_check)
             
+            # Панель настроек Elekta mod
+            self.elekta_settings_widget = QWidget()
+            elekta_settings_layout = QGridLayout(self.elekta_settings_widget)
+            elekta_settings_layout.setContentsMargins(10, 5, 5, 5)
+            elekta_settings_layout.setSpacing(8)
+            
+            lbl_local_port = QLabel("Лок. порт приема (SCP Port):")
+            self.elekta_local_port_edit = QLineEdit("10404")
+            self.elekta_local_port_edit.setPlaceholderText("10404")
+            
+            lbl_local_aet = QLabel("Лок. AE Title (SCP AET):")
+            self.elekta_local_aet_edit = QLineEdit("AIC_SCP")
+            self.elekta_local_aet_edit.setPlaceholderText("AIC_SCP")
+            
+            lbl_monaco_aet = QLabel("AE Title Monaco:")
+            self.elekta_monaco_aet_edit = QLineEdit("MONACO")
+            self.elekta_monaco_aet_edit.setPlaceholderText("MONACO")
+            
+            lbl_monaco_port = QLabel("Порт Monaco:")
+            self.elekta_monaco_port_edit = QLineEdit("104")
+            self.elekta_monaco_port_edit.setPlaceholderText("104")
+            
+            elekta_settings_layout.addWidget(lbl_local_port, 0, 0)
+            elekta_settings_layout.addWidget(self.elekta_local_port_edit, 0, 1)
+            elekta_settings_layout.addWidget(lbl_local_aet, 1, 0)
+            elekta_settings_layout.addWidget(self.elekta_local_aet_edit, 1, 1)
+            
+            elekta_settings_layout.addWidget(lbl_monaco_aet, 2, 0)
+            elekta_settings_layout.addWidget(self.elekta_monaco_aet_edit, 2, 1)
+            elekta_settings_layout.addWidget(lbl_monaco_port, 3, 0)
+            elekta_settings_layout.addWidget(self.elekta_monaco_port_edit, 3, 1)
+            
+            self.elekta_settings_widget.setVisible(False)
+            input_group_layout.addWidget(self.elekta_settings_widget)
+            
             tab2_layout.addWidget(input_group)
             
             # Группа: Действия с файлами структур (перенесено из Tab 1)
@@ -4562,6 +4597,11 @@ if PYQT_AVAILABLE:
         def on_elekta_mode_changed(self, state: int):
             """Слот изменения состояния чекбокса Elekta mod."""
             enabled = (state == 2)
+            
+            # Переключаем видимость виджета настроек
+            if hasattr(self, 'elekta_settings_widget'):
+                self.elekta_settings_widget.setVisible(enabled)
+                
             if enabled:
                 # Запоминаем текущую папку
                 self._saved_user_dir = self.input_edit.text().strip()
@@ -4581,10 +4621,15 @@ if PYQT_AVAILABLE:
                         log_callback=lambda msg: self.append_log(msg, "#00ffd0")
                     )
                 
+                # Считываем настройки из полей ввода
+                port_str = self.elekta_local_port_edit.text().strip()
+                port = int(port_str) if port_str.isdigit() else 10404
+                ae_title = self.elekta_local_aet_edit.text().strip() or "AIC_SCP"
+                
                 # Запускаем SCP-сервер
                 self.elekta_manager.start_receiver(
-                    port=11112,
-                    ae_title="AICONTOUR_SCP",
+                    port=port,
+                    ae_title=ae_title,
                     study_received_callback=self.on_elekta_study_received
                 )
             else:
@@ -5214,7 +5259,15 @@ if PYQT_AVAILABLE:
                     # Автоматическая фоновая отправка результатов на Monaco в режиме Elekta mod
                     if getattr(self, 'elekta_mode_check', None) and self.elekta_mode_check.isChecked():
                         if hasattr(self, 'elekta_manager') and self.elekta_manager.last_monaco_ip:
-                            self.append_log(f"[Elekta]: Запуск фонового экспорта снимков и RTSTRUCT для {patient_name} на Monaco ({self.elekta_manager.last_monaco_ip})...", "#00ffd0")
+                            # Обновляем порт и AET Monaco из полей ввода перед отправкой
+                            monaco_aet = self.elekta_monaco_aet_edit.text().strip() or "MONACO"
+                            monaco_port_str = self.elekta_monaco_port_edit.text().strip()
+                            monaco_port = int(monaco_port_str) if monaco_port_str.isdigit() else 104
+                            
+                            self.elekta_manager.monaco_aet = monaco_aet
+                            self.elekta_manager.monaco_port = monaco_port
+                            
+                            self.append_log(f"[Elekta]: Запуск фонового экспорта снимков и RTSTRUCT для {patient_name} на Monaco ({self.elekta_manager.last_monaco_ip}:{monaco_port}, AET: {monaco_aet})...", "#00ffd0")
                             
                             def on_elekta_export_finished(send_success, send_msg):
                                 if send_success:
