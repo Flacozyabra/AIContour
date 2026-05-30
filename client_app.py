@@ -1578,6 +1578,13 @@ if PYQT_AVAILABLE:
             self.elekta_settings_widget.setVisible(False)
             input_group_layout.addWidget(self.elekta_settings_widget)
             
+            # Автосохранение настроек Elekta mod при ручном изменении
+            self.elekta_mode_check.stateChanged.connect(self.save_settings)
+            self.elekta_local_aet_edit.textChanged.connect(self.save_settings)
+            self.elekta_local_port_edit.textChanged.connect(self.save_settings)
+            self.elekta_monaco_aet_edit.textChanged.connect(self.save_settings)
+            self.elekta_monaco_port_edit.textChanged.connect(self.save_settings)
+            
             tab2_layout.addWidget(input_group)
             
             # Группа: Действия с файлами структур (перенесено из Tab 1)
@@ -2519,6 +2526,22 @@ if PYQT_AVAILABLE:
                 self.radio_gpu.setChecked(use_gpu)
                 self.radio_cpu.setChecked(not use_gpu)
 
+                # Загружаем параметры Elekta mod
+                elekta_local_aet = self.settings.value("elekta_local_aet", "AIC_SCP")
+                self.elekta_local_aet_edit.setText(elekta_local_aet)
+                
+                elekta_local_port = self.settings.value("elekta_local_port", "10404")
+                self.elekta_local_port_edit.setText(elekta_local_port)
+                
+                elekta_monaco_aet = self.settings.value("elekta_monaco_aet", "MONACO")
+                self.elekta_monaco_aet_edit.setText(elekta_monaco_aet)
+                
+                elekta_monaco_port = self.settings.value("elekta_monaco_port", "104")
+                self.elekta_monaco_port_edit.setText(elekta_monaco_port)
+                
+                elekta_mode_enabled = self.settings.value("elekta_mode_enabled", False, type=bool)
+                self.elekta_mode_check.setChecked(elekta_mode_enabled)
+
                 # Восстанавливаем галочки органов (без сигналов)
                 checked_organs = self.settings.value("checked_organs", None)
                 if checked_organs is not None:
@@ -2572,6 +2595,18 @@ if PYQT_AVAILABLE:
             self.settings.setValue("color_preset", self.color_preset_combo.currentText())
             self.settings.setValue("play_sound", self.sound_check.isChecked())
             self.settings.setValue("use_gpu", self.radio_gpu.isChecked())
+            
+            # Сохраняем параметры Elekta mod
+            if hasattr(self, 'elekta_mode_check'):
+                self.settings.setValue("elekta_mode_enabled", self.elekta_mode_check.isChecked())
+            if hasattr(self, 'elekta_local_aet_edit'):
+                self.settings.setValue("elekta_local_aet", self.elekta_local_aet_edit.text().strip())
+            if hasattr(self, 'elekta_local_port_edit'):
+                self.settings.setValue("elekta_local_port", self.elekta_local_port_edit.text().strip())
+            if hasattr(self, 'elekta_monaco_aet_edit'):
+                self.settings.setValue("elekta_monaco_aet", self.elekta_monaco_aet_edit.text().strip())
+            if hasattr(self, 'elekta_monaco_port_edit'):
+                self.settings.setValue("elekta_monaco_port", self.elekta_monaco_port_edit.text().strip())
             
             checked_organs = []
             for i in range(self.organs_list.count()):
