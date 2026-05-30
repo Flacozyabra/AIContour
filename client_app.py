@@ -31,6 +31,7 @@ from typing import Dict, List, Optional
 import pyqtgraph as pg
 import numpy as np
 import pydicom
+import elekta_mod
 
 # Импорт PyQt6
 try:
