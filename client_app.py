@@ -39,7 +39,7 @@ try:
         QLabel, QLineEdit, QPushButton, QComboBox, QListWidget, QListWidgetItem,
         QRadioButton, QButtonGroup, QTextEdit, QProgressBar, QFileDialog,
         QMessageBox, QFrame, QSplitter, QCheckBox, QDialog, QTextBrowser,
-        QTabWidget, QColorDialog, QGroupBox,
+        QTabWidget, QColorDialog, QGroupBox, QGridLayout,
         QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMenu,
         QProgressDialog, QScrollArea, QStyledItemDelegate, QStyleOptionViewItem
     )
