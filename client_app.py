@@ -2475,6 +2475,7 @@ if PYQT_AVAILABLE:
 
         def load_settings(self):
             """Загружает сохраненное состояние интерфейса."""
+            self.is_loading_settings = True
             self.preset_combo.blockSignals(True)
             self.organs_list.blockSignals(True)
             self.is_updating_presets = True
@@ -2547,14 +2548,19 @@ if PYQT_AVAILABLE:
                     elekta_monaco_port = str(self.settings.value("elekta_monaco_port", "104"))
                     self.elekta_monaco_port_edit.setText(elekta_monaco_port)
                     
-                    # Безопасное чтение булевого значения
+                    # Безопасное чтение булевого значения с подробным логированием
                     val = self.settings.value("elekta_mode_enabled", False)
+                    logger.info(f"[Elekta Debug]: Значение из реестра 'elekta_mode_enabled' = {val} (тип: {type(val)})")
+                    
                     if isinstance(val, str):
                         elekta_mode_enabled = val.lower() in ("true", "1")
                     else:
                         elekta_mode_enabled = bool(val)
                         
+                    logger.info(f"[Elekta Debug]: Спарсенное состояние чекбокса = {elekta_mode_enabled}")
+                    
                     self.elekta_mode_check.setChecked(elekta_mode_enabled)
+                    logger.info(f"[Elekta Debug]: Состояние чекбокса после setChecked = {self.elekta_mode_check.isChecked()}")
                 except Exception as elekta_err:
                     logger.error(f"Ошибка при безопасном чтении настроек Elekta mod: {elekta_err}", exc_info=True)
                 finally:
@@ -2595,6 +2601,7 @@ if PYQT_AVAILABLE:
                 self.is_updating_presets = False
                 self.organs_list.blockSignals(False)
                 self.preset_combo.blockSignals(False)
+                self.is_loading_settings = False
                 
                 input_dir = self.settings.value("input_dir", "")
                 if input_dir and os.path.isdir(input_dir):
@@ -2604,6 +2611,8 @@ if PYQT_AVAILABLE:
 
         def save_settings(self):
             """Сохраняет состояние интерфейса в QSettings."""
+            if getattr(self, 'is_loading_settings', False):
+                return
             self.settings.setValue("input_dir", self.input_edit.text().strip())
             self.settings.setValue("server_url", self.server_url_edit.text().strip())
             self.settings.setValue("client_name", self.client_name_edit.text().strip())
