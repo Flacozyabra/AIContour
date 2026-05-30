@@ -1508,37 +1508,64 @@ if PYQT_AVAILABLE:
             self.elekta_mode_check.stateChanged.connect(self.on_elekta_mode_changed)
             input_group_layout.addWidget(self.elekta_mode_check)
             
-            # Панель настроек Elekta mod
+            # Панель настроек Elekta mod (компактный вид: 2 строки)
             self.elekta_settings_widget = QWidget()
             elekta_settings_layout = QGridLayout(self.elekta_settings_widget)
             elekta_settings_layout.setContentsMargins(10, 5, 5, 5)
-            elekta_settings_layout.setSpacing(8)
+            elekta_settings_layout.setSpacing(6)
             
-            lbl_local_port = QLabel("Лок. порт приема (SCP Port):")
-            self.elekta_local_port_edit = QLineEdit("10404")
-            self.elekta_local_port_edit.setPlaceholderText("10404")
+            lbl_local_desc = QLabel("Наш приемник (AET / Порт):")
+            lbl_local_desc.setStyleSheet("color: #a0a0a0; font-weight: 500;")
             
-            lbl_local_aet = QLabel("Лок. AE Title (SCP AET):")
             self.elekta_local_aet_edit = QLineEdit("AIC_SCP")
             self.elekta_local_aet_edit.setPlaceholderText("AIC_SCP")
+            self.elekta_local_aet_edit.setFixedWidth(100)
             
-            lbl_monaco_aet = QLabel("AE Title Monaco:")
+            lbl_slash1 = QLabel("/")
+            lbl_slash1.setStyleSheet("color: #666666; font-weight: bold;")
+            
+            self.elekta_local_port_edit = QLineEdit("10404")
+            self.elekta_local_port_edit.setPlaceholderText("10404")
+            self.elekta_local_port_edit.setFixedWidth(70)
+            
+            lbl_monaco_desc = QLabel("Станция Monaco (AET / Порт):")
+            lbl_monaco_desc.setStyleSheet("color: #a0a0a0; font-weight: 500;")
+            
             self.elekta_monaco_aet_edit = QLineEdit("MONACO")
             self.elekta_monaco_aet_edit.setPlaceholderText("MONACO")
+            self.elekta_monaco_aet_edit.setFixedWidth(100)
             
-            lbl_monaco_port = QLabel("Порт Monaco:")
+            lbl_slash2 = QLabel("/")
+            lbl_slash2.setStyleSheet("color: #666666; font-weight: bold;")
+            
             self.elekta_monaco_port_edit = QLineEdit("104")
             self.elekta_monaco_port_edit.setPlaceholderText("104")
+            self.elekta_monaco_port_edit.setFixedWidth(70)
             
-            elekta_settings_layout.addWidget(lbl_local_port, 0, 0)
-            elekta_settings_layout.addWidget(self.elekta_local_port_edit, 0, 1)
-            elekta_settings_layout.addWidget(lbl_local_aet, 1, 0)
-            elekta_settings_layout.addWidget(self.elekta_local_aet_edit, 1, 1)
+            # Размещаем в сетку
+            # Строка 0: Приемник
+            elekta_settings_layout.addWidget(lbl_local_desc, 0, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             
-            elekta_settings_layout.addWidget(lbl_monaco_aet, 2, 0)
-            elekta_settings_layout.addWidget(self.elekta_monaco_aet_edit, 2, 1)
-            elekta_settings_layout.addWidget(lbl_monaco_port, 3, 0)
-            elekta_settings_layout.addWidget(self.elekta_monaco_port_edit, 3, 1)
+            hbox_local = QHBoxLayout()
+            hbox_local.setContentsMargins(0, 0, 0, 0)
+            hbox_local.setSpacing(4)
+            hbox_local.addWidget(self.elekta_local_aet_edit)
+            hbox_local.addWidget(lbl_slash1)
+            hbox_local.addWidget(self.elekta_local_port_edit)
+            hbox_local.addStretch()
+            elekta_settings_layout.addLayout(hbox_local, 0, 1)
+            
+            # Строка 1: Monaco
+            elekta_settings_layout.addWidget(lbl_monaco_desc, 1, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            
+            hbox_monaco = QHBoxLayout()
+            hbox_monaco.setContentsMargins(0, 0, 0, 0)
+            hbox_monaco.setSpacing(4)
+            hbox_monaco.addWidget(self.elekta_monaco_aet_edit)
+            hbox_monaco.addWidget(lbl_slash2)
+            hbox_monaco.addWidget(self.elekta_monaco_port_edit)
+            hbox_monaco.addStretch()
+            elekta_settings_layout.addLayout(hbox_monaco, 1, 1)
             
             self.elekta_settings_widget.setVisible(False)
             input_group_layout.addWidget(self.elekta_settings_widget)
