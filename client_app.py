@@ -2526,21 +2526,38 @@ if PYQT_AVAILABLE:
                 self.radio_gpu.setChecked(use_gpu)
                 self.radio_cpu.setChecked(not use_gpu)
 
-                # Загружаем параметры Elekta mod
-                elekta_local_aet = self.settings.value("elekta_local_aet", "AIC_SCP")
-                self.elekta_local_aet_edit.setText(elekta_local_aet)
+                # Загружаем параметры Elekta mod с блокировкой сигналов, чтобы не затереть QSettings
+                self.elekta_local_aet_edit.blockSignals(True)
+                self.elekta_local_port_edit.blockSignals(True)
+                self.elekta_monaco_aet_edit.blockSignals(True)
+                self.elekta_monaco_port_edit.blockSignals(True)
+                self.elekta_mode_check.blockSignals(True)
                 
-                elekta_local_port = self.settings.value("elekta_local_port", "10404")
-                self.elekta_local_port_edit.setText(elekta_local_port)
+                try:
+                    elekta_local_aet = self.settings.value("elekta_local_aet", "AIC_SCP")
+                    self.elekta_local_aet_edit.setText(elekta_local_aet)
+                    
+                    elekta_local_port = self.settings.value("elekta_local_port", "10404")
+                    self.elekta_local_port_edit.setText(elekta_local_port)
+                    
+                    elekta_monaco_aet = self.settings.value("elekta_monaco_aet", "MONACO")
+                    self.elekta_monaco_aet_edit.setText(elekta_monaco_aet)
+                    
+                    elekta_monaco_port = self.settings.value("elekta_monaco_port", "104")
+                    self.elekta_monaco_port_edit.setText(elekta_monaco_port)
+                    
+                    elekta_mode_enabled = self.settings.value("elekta_mode_enabled", False, type=bool)
+                    self.elekta_mode_check.setChecked(elekta_mode_enabled)
+                finally:
+                    self.elekta_local_aet_edit.blockSignals(False)
+                    self.elekta_local_port_edit.blockSignals(False)
+                    self.elekta_monaco_aet_edit.blockSignals(False)
+                    self.elekta_monaco_port_edit.blockSignals(False)
+                    self.elekta_mode_check.blockSignals(False)
                 
-                elekta_monaco_aet = self.settings.value("elekta_monaco_aet", "MONACO")
-                self.elekta_monaco_aet_edit.setText(elekta_monaco_aet)
-                
-                elekta_monaco_port = self.settings.value("elekta_monaco_port", "104")
-                self.elekta_monaco_port_edit.setText(elekta_monaco_port)
-                
-                elekta_mode_enabled = self.settings.value("elekta_mode_enabled", False, type=bool)
-                self.elekta_mode_check.setChecked(elekta_mode_enabled)
+                # Вручную триггерим логику включения/выключения Elekta mod в зависимости от загруженного состояния
+                if elekta_mode_enabled:
+                    self.on_elekta_mode_changed(2)
 
                 # Восстанавливаем галочки органов (без сигналов)
                 checked_organs = self.settings.value("checked_organs", None)
