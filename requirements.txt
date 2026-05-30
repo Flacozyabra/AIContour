@@ -55,7 +55,7 @@ pyarrow==24.0.0
 pydantic==2.13.4
 pydantic_core==2.46.4
 pydicom==3.0.2
-pynetdicom==2.1.1
+pynetdicom>=3.0.0
 Pygments==2.20.0
 pyparsing==3.3.2
 PyQt6==6.11.0
